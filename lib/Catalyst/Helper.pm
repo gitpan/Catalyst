@@ -39,6 +39,7 @@ sub mk_app {
     $self->_mk_changes;
     $self->_mk_apptest;
     $self->_mk_cgi;
+    $self->_mk_nphcgi;
     $self->_mk_fcgi;
     $self->_mk_server;
     $self->_mk_test;
@@ -322,10 +323,57 @@ sub _mk_cgi {
     my $self   = shift;
     my $name   = $self->{name};
     my $script = $self->{script};
-    $self->mk_file( "$script\/nph-cgi.pl", <<"EOF");
+    $self->mk_file( "$script\/cgi.pl", <<"EOF");
 $Config{startperl} -w
 
 BEGIN { \$ENV{CATALYST_ENGINE} = 'CGI' }
+
+use strict;
+use FindBin;
+use lib "\$FindBin::Bin/../lib";
+use $name;
+
+$name->run;
+
+1;
+__END__
+
+=head1 NAME
+
+cgi - Catalyst CGI
+
+=head1 SYNOPSIS
+
+See L<Catalyst::Manual>
+
+=head1 DESCRIPTION
+
+Run a Catalyst application as cgi.
+
+=head1 AUTHOR
+
+Sebastian Riedel, C<sri\@oook.de>
+
+=head1 COPYRIGHT
+
+Copyright 2004 Sebastian Riedel. All rights reserved.
+
+This library is free software. You can redistribute it and/or modify it under
+the same terms as perl itself.
+
+=cut
+EOF
+    chmod 0700, "$script/cgi.pl";
+}
+
+sub _mk_nphcgi {
+    my $self   = shift;
+    my $name   = $self->{name};
+    my $script = $self->{script};
+    $self->mk_file( "$script\/nph-cgi.pl", <<"EOF");
+$Config{startperl} -w
+
+BEGIN { \$ENV{CATALYST_ENGINE} = 'CGI::NPH' }
 
 use strict;
 use FindBin;
@@ -347,7 +395,7 @@ See L<Catalyst::Manual>
 
 =head1 DESCRIPTION
 
-Run a Catalyst application as cgi.
+Run a Catalyst application as nph cgi.
 
 =head1 AUTHOR
 
@@ -483,11 +531,14 @@ sub _mk_test {
     $self->mk_file( "$script/test.pl", <<"EOF");
 $Config{startperl} -w
 
+BEGIN { \$ENV{CATALYST_ENGINE} = 'Test' }
+
 use strict;
 use Getopt::Long;
 use Pod::Usage;
 use FindBin;
 use lib "\$FindBin::Bin/../lib";
+use $name;
 
 my \$help = 0;
 
@@ -495,10 +546,7 @@ GetOptions( 'help|?' => \\\$help );
 
 pod2usage(1) if ( \$help || !\$ARGV[0] );
 
-require Catalyst::Test;
-import Catalyst::Test '$name';
-
-print get(\$ARGV[0]) . "\n";
+print $name->run(\$ARGV[0])->content . "\n";
 
 1;
 __END__

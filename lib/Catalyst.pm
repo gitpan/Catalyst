@@ -7,7 +7,7 @@ use Catalyst::Log;
 
 __PACKAGE__->mk_classdata($_) for qw/_config engine log/;
 
-our $VERSION = '4.33';
+our $VERSION = '4.34';
 our @ISA;
 
 =head1 NAME
@@ -141,15 +141,9 @@ sub import {
     my ( $self, @options ) = @_;
     my $caller = caller(0);
 
-    # Class
-    {
+    unless ( $caller->isa($self) ) {
         no strict 'refs';
-        *{"$caller\::handler"} =
-          sub { Catalyst::Engine::handler( $caller, @_ ) };
-
-        unless ( $caller->isa($self) ) {
-            push @{"$caller\::ISA"}, $self;
-        }
+        push @{"$caller\::ISA"}, $self;
     }
 
     unless ( $caller->log ) {
