@@ -164,7 +164,6 @@ sub server {
         $ENV{QUERY_STRING}    = $query_string || '';
         $ENV{CONTENT_TYPE}    ||= 'multipart/form-data';
         $ENV{SERVER_SOFTWARE} ||= "Catalyst/$Catalyst::VERSION";
-        warn "$ENV{CONTENT_TYPE}";
         $class->run;
     }
 }
