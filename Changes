@@ -1,0 +1,97 @@
+This file documents the revision history for Perl extension Catalyst.
+
+4.23  Wed Mar 09 20:00:00 2005
+        - no more regex actions in forward
+        - added support for test directories t/m, t/v and t/c
+
+4.22  Tue Mar 08 20:00:00 2005
+        - catch errors in application class
+
+4.21  Sat Mar 05 17:00:00 2005
+        - fixed docs
+
+4.20  Fri Mar 04 22:00:00 2005
+        - moved bin to script
+
+4.13  Thu Mar 03 11:00:00 2005
+        - improved documentation
+        - pod coverage test for helper generated apps
+        - new helper api
+
+4.12  Wed Mar 02 11:00:00 2005
+        - server_base sucks, removed
+        - added $c->log->dump()
+
+4.11  Wed Mar 02 11:00:00 2005
+        - removed some warnings
+        - improved docs
+        - private prefixed actions override private non prefixed actions
+        - added server_base
+        - updated Catalyst::Manual::Intro
+
+4.10  Wed Mar 02 10:00:00 2005
+        - improved documentation
+        - fixed upload bug
+        - fixed prefixed private actions bug
+        - fixed more little bugs
+
+4.01  Tue Mar 01 10:00:00 2005
+        - improved documentation
+        - documentation fixes (Johan Lindstrom)
+
+4.00  Sun Feb 27 22:00:00 2005
+        - more verbose debug messages, especially for forward()
+        - implemented prefixed prvate actions, icluding built in
+          !?default, !?begin and !?end
+        - new Catalyst::Manual::Intro
+        - new helpers, bin/catalyst
+        - helper api
+
+3.11  Wed Feb 23 21:00:00 2005
+        - added dependency to UNIVERSAL::require (Marcus Ramberg)
+        - added a little workaround for a warning in Catalyst::Test
+          (Marcus Ramberg)
+        - improved documentation for actions
+
+3.10  Thu Feb 19 20:00:00 2005
+        - removed roles management from Catalyst::Engine
+          and added it to Catalyst::Plugin::Authentication::CDBI
+
+3.04  Thu Feb 17 21:00:00 2005
+        - error reporting for app class
+        - no more engine debug messages
+        - class->method forwards get resolved now
+
+3.03  Wed Feb 16 23:00:00 2005
+        - friendlier statistics
+
+3.02  Wed Feb 16 22:00:00 2005
+        - fixed unintialized actions (Marcus Ramberg)
+
+3.01  Wed Feb 16 20:30:00 2005
+        - better statistics
+
+3.00  Wed Feb 16 20:00:00 2005
+        - real version number for CPAN.pm
+        - fixed redirect in CGI engine
+        - more statistics in debug logs
+        - ? prefix for forward()
+
+2.99_15  Wed Feb 02 22:00:00 2005
+        - support for short namespaces, MyApp::M, MyApp::V and MyApp::C
+        - Replaced "Catched" with "Caught" in Catalyst::Engine
+          (Gary Ashton Jones)
+        - replaced _ with ! for private actions
+        - added ? for prefixed actions
+        - misc improvememts
+
+2.99_14  Mon Jan 31 22:00:00 2005
+        - arguments for _default
+        - $c->entrance removed for more flexibility
+        - added $c->req->method
+
+2.99_13  Sun Jan 30 18:00:00 2005
+        - POD fixes and improvements
+
+2.99_12  Fri Jan 28 22:00:00 2005
+        - first development release
