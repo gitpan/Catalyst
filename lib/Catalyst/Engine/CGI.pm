@@ -106,6 +106,16 @@ sub finalize_output {
     print $c->response->output;
 }
 
+=item $c->prepare_connection
+
+=cut
+
+sub prepare_connection {
+    my $c = shift;
+    $c->req->hostname( $c->cgi->remote_host );
+    $c->req->address( $c->cgi->remote_addr );
+}
+
 =item $c->prepare_cookies
 
 Sets up cookies.
@@ -125,6 +135,8 @@ sub prepare_headers {
         ( my $field = $header ) =~ s/^HTTPS?_//;
         $c->req->headers->header( $field => $c->cgi->http($header) );
     }
+    $c->req->headers->header( 'Content-Type'   => $c->cgi->content_type );
+    $c->req->headers->header( 'Content-Length' => $c->cgi->content_length );
 }
 
 =item $c->prepare_parameters

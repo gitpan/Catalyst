@@ -322,8 +322,10 @@ sub _mk_cgi {
     my $self   = shift;
     my $name   = $self->{name};
     my $script = $self->{script};
-    $self->mk_file( "$script\/cgi.pl", <<"EOF");
+    $self->mk_file( "$script\/nph-cgi.pl", <<"EOF");
 $Config{startperl} -w
+
+BEGIN { \$ENV{CATALYST_ENGINE} = 'CGI' }
 
 use strict;
 use FindBin;
@@ -337,7 +339,7 @@ __END__
 
 =head1 NAME
 
-cgi - Catalyst CGI
+nph-cgi - Catalyst CGI
 
 =head1 SYNOPSIS
 
@@ -360,7 +362,7 @@ the same terms as perl itself.
 
 =cut
 EOF
-    chmod 0700, "$script/cgi.pl";
+    chmod 0700, "$script/nph-cgi.pl";
 }
 
 sub _mk_server {
@@ -370,12 +372,16 @@ sub _mk_server {
     $self->mk_file( "$script\/server.pl", <<"EOF");
 $Config{startperl} -w
 
+BEGIN { 
+    \$ENV{CATALYST_ENGINE} = 'Server';
+}
+
 use strict;
 use Getopt::Long;
 use Pod::Usage;
 use FindBin;
 use lib "\$FindBin::Bin/../lib";
-use Catalyst::Test '$name';
+use $name;
 
 my \$help = 0;
 my \$port = 3000;
@@ -384,7 +390,7 @@ GetOptions( 'help|?' => \\\$help, 'port=s' => \\\$port );
 
 pod2usage(1) if \$help;
 
-Catalyst::Test::server(\$port);
+$name->run(\$port);
 
 1;
 __END__
@@ -432,12 +438,17 @@ sub _mk_cgiserver {
     $self->mk_file( "$script\/cgi-server.pl", <<"EOF");
 $Config{startperl} -w
 
+BEGIN { 
+    \$ENV{CATALYST_ENGINE} = 'Server';
+}
+
 use strict;
 use Getopt::Long;
 use Pod::Usage;
 use FindBin;
+use lib "\$FindBin::Bin/../lib";
 use File::Spec;
-use Catalyst::Test;
+use $name;
 
 my \$help = 0;
 my \$port = 3000;
@@ -446,8 +457,7 @@ GetOptions( 'help|?' => \\\$help, 'port=s' => \\\$port );
 
 pod2usage(1) if \$help;
 
-Catalyst::Test::server(
-    \$port, File::Spec->catfile( \$FindBin::Bin, 'cgi.pl' ) );
+$name->run( \$port, File::Spec->catfile( \$FindBin::Bin, 'nph-cgi.pl' ) );
 
 1;
 __END__
