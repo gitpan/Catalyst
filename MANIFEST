@@ -9,8 +9,11 @@ lib/Catalyst/Helper.pm
 lib/Catalyst/Log.pm
 lib/Catalyst/Manual.pod
 lib/Catalyst/Manual/Cookbook.pod
+lib/Catalyst/Manual/FAQ.pod
 lib/Catalyst/Manual/Internals.pod
 lib/Catalyst/Manual/Intro.pod
+lib/Catalyst/Manual/SuccessStories.pod
+lib/Catalyst/Manual/Troubleshooting.pod
 lib/Catalyst/Request.pm
 lib/Catalyst/Response.pm
 lib/Catalyst/Test.pm
