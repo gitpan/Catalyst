@@ -1,5 +1,10 @@
 This file documents the revision history for Perl extension Catalyst.
 
+3.04  Thu Feb 17 21:00:00 2005
+        - error reporting for app class
+        - no more engine debug messages
+        - class->method forwards get resolved now
+
 3.03  Wed Feb 16 23:00:00 2005
         - friendlier statistics
 

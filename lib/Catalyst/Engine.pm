@@ -328,21 +328,14 @@ sub forward {
     my ( $class, $code );
     if ( my $action = $c->action($command) ) {
         ( $class, $code ) = @{ $action->[0] };
-        $c->log->debug(qq/Action "$command" in "$class" is "$code"/)
-          if $c->debug;
     }
     else {
         $class = $command;
         my $method = shift || 'process';
         if ( $code = $class->can($method) ) {
-            $c->log->debug(qq/Method "$method" in "$class" is "$code"/)
-              if $c->debug;
+            $c->actions->{reverse}->{"$code"} = "$class->$method";
         }
-        else {
-            $c->log->error(qq/Couldn't find method "$method" in "$class"/)
-              if $c->debug;
-            return 0;
-        }
+        else { return 0 }
     }
     $class = $c->components->{$class} || $class;
     return $c->process( $class, $code );
