@@ -16,7 +16,6 @@ lib/Catalyst/Response.pm
 lib/Catalyst/Test.pm
 Makefile.PL
 MANIFEST			This list of files
-META.yml
 README
 t/01use.t
 t/02podcoverage.t
@@ -31,3 +30,4 @@ t/10redirect.t
 t/11stash.t
 t/12default.t
 t/13beginend.t
+META.yml                                 Module meta-data (added by MakeMaker)
