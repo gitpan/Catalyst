@@ -7,7 +7,7 @@ use Catalyst::Log;
 
 __PACKAGE__->mk_classdata($_) for qw/_config log/;
 
-our $VERSION = '4.27';
+our $VERSION = '4.28';
 our @ISA;
 
 =head1 NAME
@@ -69,37 +69,49 @@ The key concept of Catalyst is DRY (Don't Repeat Yourself).
 
 See L<Catalyst::Manual> for more documentation.
 
-Omit the Catalyst::Plugin:: prefix from plugins.
-So Catalyst::Plugin::My::Module becomes My::Module.
+Catalyst plugins can be loaded by naming them as arguments to the "use Catalyst" statement.
+Omit the C<Catalyst::Plugin::> prefix from the plugin name, 
+so C<Catalyst::Plugin::My::Module> becomes C<My::Module>.
 
     use Catalyst 'My::Module';
 
-You can also set special flags like -Debug and -Engine.
+Special flags like -Debug and -Engine can also be specifed as arguments when
+Catalyst is loaded:
 
     use Catalyst qw/-Debug My::Module/;
 
-The position of plugins and flags in the chain is important,
-because they are loaded in the same order they appear.
+The position of plugins and flags in the chain is important, because they are
+loaded in exactly the order that they appear.
 
-=head2 -Debug
+The following flags are supported:
+
+=over 4
+
+=item -Debug
+
+enables debug output, i.e.:
 
     use Catalyst '-Debug';
 
-is equivalent to
+this is equivalent to:
 
     use Catalyst;
     sub debug { 1 }
 
-=head2 -Engine
+=item -Engine
 
 Force Catalyst to use a specific engine.
-Omit the Catalyst::Engine:: prefix.
+Omit the C<Catalyst::Engine::> prefix of the engine name, i.e.:
 
     use Catalyst '-Engine=CGI';
 
-=head2 METHODS
+=back
 
-=head3 debug
+=head1 METHODS
+
+=over 4
+
+=item debug
 
 Overload to enable debug messages.
 
@@ -107,7 +119,7 @@ Overload to enable debug messages.
 
 sub debug { 0 }
 
-=head3 config
+=item config
 
 Returns a hashref containing your applications settings.
 
@@ -161,7 +173,8 @@ sub import {
             else {
                 $caller->log->debug(qq/Loaded plugin "$plugin"/)
                   if $caller->debug;
-                unshift @ISA, $plugin;
+                no strict 'refs';
+                push @{"$caller\::ISA"}, $plugin;
             }
         }
     }
@@ -171,9 +184,14 @@ sub import {
       if $ENV{CATALYST_ENGINE};
     $engine->require;
     die qq/Couldn't load engine "$engine", "$@"/ if $@;
-    push @ISA, $engine;
+    {
+        no strict 'refs';
+        push @{"$caller\::ISA"}, $engine;
+    }
     $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
 }
+
+=back
 
 =head1 SUPPORT
 
@@ -197,9 +215,10 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 THANK YOU
 
-Andrew Ruthven, Christopher Hicks, Danijel Milicevic, David Naughton,
-Gary Ashton Jones, Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg,
-Tatsuhiko Miyagawa and all the others who've helped.
+Andrew Ford, Andrew Ruthven, Christian Hansen, Christopher Hicks,
+Danijel Milicevic, David Naughton, Gary Ashton Jones, Jesse Sheidlower,
+Johan Lindstrom, Marcus Ramberg, Tatsuhiko Miyagawa and all the others
+who've helped.
 
 =head1 LICENSE
 
