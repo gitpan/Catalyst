@@ -115,9 +115,8 @@ sub prepare_path {
     $c->req->{path} =~ s/^($loc)?\///;
     $c->req->{path} .= '/' if $c->req->path eq $loc;
     my $base = $c->cgi->url;
-    $base =~ s/-e$// if $ENV{CATALYST_TEST};
     $base = URI->new($base);
-    $base->path('/') unless $base->path;
+    $base->path('/') if ( $ENV{CATALYST_TEST} || !$base->path );
     $c->req->base( $base->as_string );
 }
 

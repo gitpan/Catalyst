@@ -7,7 +7,7 @@ use Catalyst::Log;
 
 __PACKAGE__->mk_classdata($_) for qw/_config log/;
 
-our $VERSION = '3.11';
+our $VERSION = '4.00';
 our @ISA;
 
 =head1 NAME
@@ -15,6 +15,25 @@ our @ISA;
 Catalyst - The Elegant MVC Web Application Framework
 
 =head1 SYNOPSIS
+
+    # use the helper to start a new application
+    catalyst MyApp
+    cd MyApp
+
+    # add models, views, controllers
+    bin/create model Something
+    bin/create view Stuff
+    bin/create controller Yada
+
+    # built in testserver
+    bin/server
+
+    # command line interface
+    bin/test /yada
+
+
+    See also L<Catalyst::Manual::Intro>
+
 
     use Catalyst;
 
@@ -125,6 +144,7 @@ sub import {
       $ENV{MOD_PERL} ? 'Catalyst::Engine::Apache' : 'Catalyst::Engine::CGI';
     foreach (@options) {
         if (/^\-Debug$/) {
+            no warnings;
             no strict 'refs';
             *{"$self\::debug"} = sub { 1 };
             $caller->log->debug('Debug messages enabled');
@@ -167,7 +187,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 THANK YOU
 
-Gary Ashton Jones, Marcus Ramberg and all the others who've helped.
+Danijel Milicevic, David Naughton, Gary Ashton Jones, Jesse Sheidlower,
+Marcus Ramberg and all the others who've helped.
 
 =head1 LICENSE
 

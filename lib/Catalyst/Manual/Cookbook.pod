@@ -20,6 +20,13 @@ placing a die() call in the _end action.
         }
     );
 
+=head2 Disable statistics
+
+Just add this line to your application class if you don't want those nifty
+statistics in your debug messages.
+
+    sub Catalyst::Log::info { }
+
 =head2 Scaffolding
 
 Scaffolding is very simple with Catalyst.

@@ -47,10 +47,13 @@ Returns a C<HTTP::Response> object.
 
 =cut
 
-CHECK {
-    if ( ( caller(0) )[1] eq '-e' ) {
-        if ( $ARGV[0] =~ /^\d+$/ ) { server( $ARGV[0] ) }
-        else { print request( $ARGV[0] || 'http://localhost' )->content }
+{
+    no warnings;
+    CHECK {
+        if ( ( caller(0) )[1] eq '-e' ) {
+            if ( $ARGV[0] =~ /^\d+$/ ) { server( $ARGV[0] ) }
+            else { print request( $ARGV[0] || 'http://localhost' )->content }
+        }
     }
 }
 

@@ -25,7 +25,7 @@ __PACKAGE__->actions(
 *req  = \&request;
 *res  = \&response;
 
-our $COUNT = 0;
+our $COUNT = 1;
 our $START = time;
 
 =head1 NAME
@@ -56,42 +56,7 @@ Get a list of available actions.
 
 It also automatically calls setup() if needed.
 
-We currently have four types of actions.
-
-1. Normal actions:
-
-    $c->action( 'foo/bar' => sub { } );
-
-    Would match http://localhost:3000/foo/bar
-
-2. Regex actions (surrounded by //):
-
-    $c->action( '/foo(\d+)/bar(\d+)/' => sub { } );
-
-    Would match http://localhost:3000/foo23/bar42
-
-    Extracted fragments (23, 42) are available in the $c->req->snippets array
-
-3. Private actions (prefixed with !):
-
-    $c->action( '!foo' => sub { } );
-
-    Like normal actions, but only internal addressable by $c->forward('!foo')
-
-    There are also built in private actions with special meaning:
-
-    * !default - used when no other action matches
-    * !begin   - called at the beginning of a request
-    * !end     - called at the end of a request
-
-4. Prefixed actions (prefixed with ?)
-
-    package MyApp::C::My::Controller;
-    $c->action( '?foo' => sub { } );
-
-    Would match http://localhost:3000/my_controller/foo
-
-    Like normal actions, but prefixed with a special moniker
+See L<Catalyst::Manual::Intro> for more informations about actions.
 
 =cut
 
@@ -110,9 +75,15 @@ sub action {
                 $self->actions->{compiled}->{qr/$regex/} = $name;
                 $self->actions->{regex}->{$name} = [ $class, $code ];
             }
-            elsif ( $name =~ /\?(.*)$/ ) {
+            elsif ( $name =~ /^\?(.*)$/ ) {
                 $name = $1;
                 $name = _prefix( $caller, $name );
+                $self->actions->{plain}->{$name} = [ $class, $code ];
+            }
+            elsif ( $name =~ /^\!\?(.*)$/ ) {
+                $name = $1;
+                $name = _prefix( $caller, $name );
+                $name = "\!$name";
                 $self->actions->{plain}->{$name} = [ $class, $code ];
             }
             else { $self->actions->{plain}->{$name} = [ $class, $code ] }
@@ -354,10 +325,20 @@ If you define a class without method it will default to process().
 sub forward {
     my $c       = shift;
     my $command = shift;
-    if ( $command =~ /\?(.*)$/ ) {
+    unless ($command) {
+        $c->log->debug('Nothing to forward to') if $c->debug;
+        return 0;
+    }
+    if ( $command =~ /^\?(.*)$/ ) {
         $command = $1;
         my $caller = caller(0);
         $command = _prefix( $caller, $command );
+    }
+    elsif ( $command =~ /^\!\?(.*)$/ ) {
+        $command = $1;
+        my $caller = caller(0);
+        $command = _prefix( $caller, $command );
+        $command = "\!$command";
     }
     my ( $class, $code );
     if ( my $action = $c->action($command) ) {
@@ -365,11 +346,19 @@ sub forward {
     }
     else {
         $class = $command;
+        if ( $class =~ /[^\w\:]/ ) {
+            $c->log->debug(qq/Couldn't forward to "$class"/) if $c->debug;
+            return 0;
+        }
         my $method = shift || 'process';
         if ( $code = $class->can($method) ) {
             $c->actions->{reverse}->{"$code"} = "$class->$method";
         }
-        else { return 0 }
+        else {
+            $c->log->debug(qq/Couldn't forward to "$class->$method"/)
+              if $c->debug;
+            return 0;
+        }
     }
     $class = $c->components->{$class} || $class;
     return $c->process( $class, $code );
@@ -384,18 +373,28 @@ Handles the request.
 sub handler {
     my ( $class, $r ) = @_;
 
-    # New request
-    $COUNT++;
-
     # Always expect worst case!
     my $status = -1;
     eval {
         my $handler = sub {
             my $c = $class->prepare($r);
             if ( $c->req->action ) {
-                $c->forward('!begin') if $c->actions->{plain}->{'!begin'};
+                my ( $begin, $end );
+                if ( my $prefix = $c->req->args->[0] ) {
+                    if ( $c->actions->{plain}->{"\!$prefix/begin"} ) {
+                        $begin = "\!$prefix/begin";
+                    }
+                    elsif ( $c->actions->{plain}->{'!begin'} ) {
+                        $begin = '!begin';
+                    }
+                    if ( $c->actions->{plain}->{"\!$prefix/end"} ) {
+                        $end = "\!$prefix/end";
+                    }
+                    elsif ( $c->actions->{plain}->{'!end'} ) { $end = '!end' }
+                }
+                $c->forward($begin)            if $begin;
                 $c->forward( $c->req->action ) if $c->req->action;
-                $c->forward('!end') if $c->actions->{plain}->{'!end'};
+                $c->forward($end)              if $end;
             }
             else {
                 my $action = $c->req->path;
@@ -420,6 +419,7 @@ sub handler {
         chomp $error;
         $class->log->error(qq/Caught exception in engine "$error"/);
     }
+    $COUNT++;
     return $status;
 }
 
@@ -448,7 +448,7 @@ sub prepare {
         stash => {}
     }, $class;
     if ( $c->debug ) {
-        my $secs = time - $START;
+        my $secs = time - $START || 1;
         my $av = sprintf '%.3f', $COUNT / $secs;
         $c->log->debug('********************************');
         $c->log->debug("* Request $COUNT ($av/s) [$$]");
@@ -506,7 +506,13 @@ sub prepare_action {
         unshift @args, pop @path;
     }
     unless ( $c->req->action ) {
-        if ( $c->actions->{plain}->{'!default'} ) {
+        my $prefix = $c->req->args->[0];
+        if ( $prefix && $c->actions->{plain}->{"\!$prefix/default"} ) {
+            $c->req->match('');
+            $c->req->action("\!$prefix/default");
+            $c->log->debug('Using prefixed default action') if $c->debug;
+        }
+        elsif ( $c->actions->{plain}->{'!default'} ) {
             $c->req->match('');
             $c->req->action('!default');
             $c->log->debug('Using default action') if $c->debug;
@@ -706,7 +712,7 @@ sub _prefix {
     my ( $class, $name ) = @_;
     $class =~ /^.*::[(M)(Model)(V)(View)(C)(Controller)]+::(.*)$/;
     my $prefix = lc $1 || '';
-    $prefix =~ s/::/_/g;
+    $prefix =~ s/\:\:/_/g;
     $name = "$prefix/$name" if $prefix;
     return $name;
 }
