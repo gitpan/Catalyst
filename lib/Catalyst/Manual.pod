@@ -6,13 +6,13 @@ Catalyst::Manual - User guide and reference for Catalyst
 
 This is the comprehensive user guide and reference for Catalyst.
 
-Catalyst::Manual::Intro
+L<Catalyst::Manual::Intro>
     Introduction to Catalyst.
 
-Catalyst::Manual::Cookbook
+L<Catalyst::Manual::Cookbook>
     Cooking with Catalyst.
 
-Catalyst::Manual::Internals
+L<Catalyst::Manual::Internals>
     Here be dragons!
 
 =head1 AUTHOR

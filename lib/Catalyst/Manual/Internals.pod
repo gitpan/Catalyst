@@ -9,21 +9,21 @@ Catalyst::Manual::Internals - Catalyst Internals
 These are the steps of a Catalyst request, every step can be overloaded to
 extend Catalyst.
 
-handler
-  prepare
-    prepare_request
-    prepare_path
-    prepare_cookies
-    prepare_headers
-    prepare_action
-    prepare_parameters
-    prepare_uploads
-  process
-    process_permission
-      process_roles
-  finalize
-    finalize_headers
-    finalize_output
+    handler
+      prepare
+        prepare_request
+        prepare_path
+        prepare_cookies
+        prepare_headers
+        prepare_action
+        prepare_parameters
+        prepare_uploads
+      process
+        process_permission
+          process_roles
+      finalize
+        finalize_headers
+        finalize_output
 
 These steps are normally overloaded from engine classes, and extended by
 plugins.

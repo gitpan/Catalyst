@@ -28,15 +28,14 @@ Everything begins with a small application controller.
 
     1;
 
-name and root are the only options used by Catalyst itself, name is the name of
-your application and root is the root directory for additional files like
-templates.
+C<name> and C<root> are the only options used by Catalyst itself, C<name> is
+the name of your application and C<root> is the root directory for additional
+files like templates.
 
-_default is a built in private action that gets called when no other action
+C<_default> is a built in private action that gets called when no other action
 matches the requested path.
-
 Private actions (prefixed by _) are normally not addressable from the outside
-world, but _default is an exception from this rule.
+world, but C<_default> is an exception from this rule.
 
 This should be enough to get you started.
 
@@ -57,9 +56,8 @@ The application controller is everything you need for a simple Catalyst
 application, but that would very soon result in a ball of mud,
 and thats why we have components (Model/View/Controller).
 
-So the next step would be to create the directories for your components.
-Catalyst will automatically search for components in MyApp/Model, MyApp/View
-and MyApp/Controller.
+Catalyst will automatically search for components in lib/MyApp/Model,
+lib/MyApp/View and lib/MyApp/Controller.
 
 You normally start a component by inheriting everything from a blueprint,
 like Catalyst::Model::CDBI or Catalyst::View::TT.
@@ -74,10 +72,10 @@ like Catalyst::Model::CDBI or Catalyst::View::TT.
 
 Thats all, you can now use $c->forward('MyApp::View::TT') from your actions.
 
-Components without a blueprint can inherit everything they need from
-C<Catalyst::Base>.
+Components without a blueprint should inherit everything they need from
+L<Catalyst::Base>.
 
-Now that you have a TT view, we can add it to the process chain.
+Add the component to the process chain.
 
     # lib/MyApp.pm
     package MyApp;
@@ -103,19 +101,19 @@ Now that you have a TT view, we can add it to the process chain.
 
     1;
 
-_end is another built in private action that gets called at the end of a
-request. (_begin is the opposite of _end,  suprise...)
+C<_end> is another built in private action that gets called at the end of a
+request. (C<_begin> is the opposite of C<_end>...suprise...)
 So it's mostly used for the View components, to process templates and stuff.
 
-In our example we forward processing to MyApp::View::TT which will render the
-template defined in $c->stash->{template} to $c->response->output.
+In the example you forwarded processing to MyApp::View::TT, which will render
+the template defined in $c->stash->{template} to $c->response->output.
 
 Note that if you forward to a class, Catalyst will automatically call the
-process() method of that class which we in this case inherited from
+process() method of that class, which MyApp::View::TT  inherited from
 Catalyst::View::TT.
 
-The stash is a universal hash that we use to store and pass around all kind of
-data during the requests lifetime.
+The stash is a universal hash that you should use to store and pass around all
+kind of data during the requests lifetime.
 
 And don't forget the template or you'll get the chance to look at our eyecandy
 debug screen. ;)
@@ -123,8 +121,7 @@ debug screen. ;)
     [%# root/index.tt #%]
     Hello Catalyst!
 
-A CDBI Model class is equally simple.
-So the first thing we do is creating a database.
+A CDBI Model class is equally simple, first create a database.
 
     -- myapp.sql
     CREATE TABLE foo (
@@ -143,7 +140,7 @@ So the first thing we do is creating a database.
 
     % sqlite /tmp/myapp.db < myapp.sql
 
-Now we can create a CDBI component.
+Then create a CDBI component.
 
     # lib/MyApp/Model/CDBI.pm
     package MyApp::Model::CDBI;
@@ -159,7 +156,7 @@ Now we can create a CDBI component.
     1;
 
 Thats all, table layouts and relationships are automatically loaded for you.
-You can use $c->stash to pass data to your templates.
+Use $c->stash to pass data to your templates.
 
     # lib/MyApp.pm
     package MyApp;

@@ -9,7 +9,7 @@ __PACKAGE__->mk_classdata($_) for qw/_config log/;
 __PACKAGE__->_config( {} );
 __PACKAGE__->log( Catalyst::Log->new );
 
-our $VERSION = '2.99_12';
+our $VERSION = '2.99_13';
 our @ISA;
 
 =head1 NAME
@@ -159,7 +159,7 @@ sub import {
 =head1 SEE ALSO
 
 L<Catalyst::Manual>, L<Catalyst::Test>, L<Catalyst::Request>,
-L<Catalyst::Response>
+L<Catalyst::Response>, L<Catalyst::Engine>
 
 =head1 AUTHOR
 

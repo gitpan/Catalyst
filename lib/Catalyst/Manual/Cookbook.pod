@@ -58,7 +58,8 @@ Just use Catalyst::Model::CDBI::CRUD as baseclass.
 
     1;
 
-And don't forget to copy the templates. ;)
+Modify the $c->form() parameters to match your needs, and don't forget to copy
+the templates. ;)
 
 =head1 AUTHOR
 

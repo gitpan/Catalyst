@@ -9,7 +9,7 @@ Catalyst::Log - Catalyst Log Class
 
 =head1 SYNOPSIS
 
-See L<Catalyst::Application>.
+See L<Catalyst>.
 
 =head1 DESCRIPTION
 
