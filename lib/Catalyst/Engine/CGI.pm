@@ -41,10 +41,6 @@ This class overloads some methods from C<Catalyst>.
 
 sub finalize_headers {
     my $c = shift;
-    if ( my $location = $c->response->redirect ) {
-        $c->log->debug(qq/Redirecting to "$location"/) if $c->debug;
-        print $c->cgi->redirect($location);
-    }
     my %headers = ( -nph => 1 );
     $headers{-status} = $c->response->status if $c->response->status;
     for my $name ( $c->response->headers->header_field_names ) {

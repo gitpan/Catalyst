@@ -1,5 +1,11 @@
 This file documents the revision history for Perl extension Catalyst.
 
+3.00  Wed Feb16 20:00:00 2005
+        - real version number for CPAN.pm
+        - fixed redirect in CGI engine
+        - more statistics in debug logs
+        - ? prefix for forward()
+
 2.99_15  Wed Feb 02 22:00:00 2005
         - support for short namespaces, MyApp::M, MyApp::V and MyApp::C
         - Replaced "Catched" with "Caught" in Catalyst::Engine

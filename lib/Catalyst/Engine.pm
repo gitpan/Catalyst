@@ -22,6 +22,9 @@ __PACKAGE__->mk_accessors(qw/request response/);
 *req  = \&request;
 *res  = \&response;
 
+our $COUNT = 0;
+our $START = time;
+
 =head1 NAME
 
 Catalyst::Engine - The Catalyst Engine
@@ -69,10 +72,7 @@ sub action {
             }
             elsif ( $name =~ /\?(.*)$/ ) {
                 $name = $1;
-                $caller =~ /^.*::[(M)(Model)(V)(View)(C)(Controller)]+::(.*)$/;
-                my $prefix = lc $1 || '';
-                $prefix =~ s/::/_/g;
-                $name = "$prefix/$name" if $prefix;
+                $name = _prefix( $caller, $name );
                 $self->actions->{plain}->{$name} = [ $class, $code ];
             }
             else { $self->actions->{plain}->{$name} = [ $class, $code ] }
@@ -316,6 +316,11 @@ If you define a class without method it will default to process().
 sub forward {
     my $c       = shift;
     my $command = shift;
+    if ( $command =~ /\?(.*)$/ ) {
+        $command = $1;
+        my $caller = caller(0);
+        $command = _prefix( $caller, $command );
+    }
     my ( $class, $code );
     if ( my $action = $c->action($command) ) {
         ( $class, $code ) = @{ $action->[0] };
@@ -347,6 +352,9 @@ Handles the request.
 
 sub handler {
     my ( $class, $r ) = @_;
+
+    # New request
+    $COUNT++;
 
     # Always expect worst case!
     my $status = -1;
@@ -407,8 +415,14 @@ sub prepare {
         roles => [],
         stash => {}
     }, $class;
-    $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION )
-      if $c->debug;
+    if ( $c->debug ) {
+        my $secs = time - $START;
+        my $av = sprintf '%.2f', $COUNT / $secs;
+        $c->log->debug('********************************');
+        $c->log->debug("* Request $COUNT ($av/s) [$$]");
+        $c->log->debug('********************************');
+        $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION );
+    }
     $c->prepare_request($r);
     $c->prepare_path;
     my $path = $c->request->path;
@@ -715,6 +729,15 @@ sub stash {
         }
     }
     return $self->{stash};
+}
+
+sub _prefix {
+    my ( $class, $name ) = @_;
+    $class =~ /^.*::[(M)(Model)(V)(View)(C)(Controller)]+::(.*)$/;
+    my $prefix = lc $1 || '';
+    $prefix =~ s/::/_/g;
+    $name = "$prefix/$name" if $prefix;
+    return $name;
 }
 
 =head1 AUTHOR
