@@ -18,6 +18,9 @@ $Data::Dumper::Terse = 1;
 __PACKAGE__->mk_classdata($_) for qw/actions components/;
 __PACKAGE__->mk_accessors(qw/request response/);
 
+__PACKAGE__->actions(
+    { plain => {}, regex => {}, compiled => {}, reverse => {} } );
+
 *comp = \&component;
 *req  = \&request;
 *res  = \&response;
@@ -76,6 +79,7 @@ sub action {
                 $self->actions->{plain}->{$name} = [ $class, $code ];
             }
             else { $self->actions->{plain}->{$name} = [ $class, $code ] }
+            $self->actions->{reverse}->{"$code"} = $name;
             $self->log->debug(
                 qq/"$caller" defined "$name" as "$code" from "$class"/)
               if $self->debug;
@@ -545,10 +549,11 @@ sub process {
     eval {
         if ( $c->debug )
         {
+            my $action = $c->actions->{reverse}->{"$code"} || "$code";
             my $elapsed;
             ( $elapsed, $status ) =
               $c->benchmark( $code, $class, $c, @{ $c->req->args } );
-            $c->log->info( sprintf qq/Processing "$code" took %fs/, $elapsed )
+            $c->log->info( sprintf qq/Processing "$action" took %fs/, $elapsed )
               if $c->debug;
         }
         else { $status = &$code( $class, $c, @{ $c->req->args } ) }

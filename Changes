@@ -1,5 +1,11 @@
 This file documents the revision history for Perl extension Catalyst.
 
+3.03  Wed Feb 16 23:00:00 2005
+        - friendlier statistics
+
+3.02  Wed Feb 16 22:00:00 2005
+        - fixed unintialized actions (Marcus Ramberg)
+
 3.01  Wed Feb 16 20:30:00 2005
         - better statistics
 
