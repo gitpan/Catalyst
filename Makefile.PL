@@ -4,6 +4,7 @@ WriteMakefile(
     NAME         => 'Catalyst',
     VERSION_FROM => 'lib/Catalyst.pm',
     PREREQ_PM    => {
+        UNIVERSAL::require       => 0,
         CGI::Simple              => 0,
         Class::Accessor::Fast    => 0,
         Class::Data::Inheritable => 0,

@@ -70,7 +70,8 @@ sub import {
 sub request {
     my $uri = shift;
     local *STDOUT;
-    open STDOUT, '>', \my $output;
+    my $output = '';
+    open STDOUT, '>', \$output;
     $uri = URI->new($uri);
     my %clean = %ENV;
     $ENV{REQUEST_METHOD} ||= 'GET';

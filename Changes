@@ -1,5 +1,11 @@
 This file documents the revision history for Perl extension Catalyst.
 
+3.11  Wed Feb 23 21:00:00 2005
+        - added dependency to UNIVERSAL::require (Marcus Ramberg)
+        - added a little workaround for a warning in Catalyst::Test
+          (Marcus Ramberg)
+        - improved documentation for actions
+
 3.10  Thu Feb 19 20:00:00 2005
         - removed roles management from Catalyst::Engine
           and added it to Catalyst::Plugin::Authentication::CDBI

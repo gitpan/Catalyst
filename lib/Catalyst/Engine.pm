@@ -56,6 +56,43 @@ Get a list of available actions.
 
 It also automatically calls setup() if needed.
 
+We currently have four types of actions.
+
+1. Normal actions:
+
+    $c->action( 'foo/bar' => sub { } );
+
+    Would match http://localhost:3000/foo/bar
+
+2. Regex actions (surrounded by //):
+
+    $c->action( '/foo(\d+)/bar(\d+)/' => sub { } );
+
+    Would match http://localhost:3000/foo23/bar42
+
+    Extracted fragments (23, 42) are available in the $c->req->snippets array
+
+3. Private actions (prefixed with !):
+
+    $c->action( '!foo' => sub { } );
+
+    Like normal actions, but only internal addressable by $c->forward('!foo')
+
+    There are also built in private actions with special meaning:
+
+    * !default - used when no other action matches
+    * !begin   - called at the beginning of a request
+    * !end     - called at the end of a request
+
+4. Prefixed actions (prefixed with ?)
+
+    package MyApp::C::My::Controller;
+    $c->action( '?foo' => sub { } );
+
+    Would match http://localhost:3000/my_controller/foo
+
+    Like normal actions, but prefixed with a special moniker
+
 =cut
 
 sub action {
