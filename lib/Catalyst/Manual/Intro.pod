@@ -1,0 +1,201 @@
+=head1 NAME
+
+Catalyst::Manual::Intro - Introduction to Catalyst
+
+=head1 DESCRIPTION
+
+This should be enough to get you started.
+
+=head2 Quickstart
+
+Everything begins with a small application controller.
+
+    # lib/MyApp.pm
+    package MyApp;
+
+    use strict;
+    use Catalyst '-Debug';
+
+    __PACKAGE__->config(
+        name => 'My Application',
+        root => '/home/joeuser/myapp/root'
+    );
+
+    __PACKAGE__->action( _default => sub {
+        my ( $self, $c ) = @_;
+        $c->response->output('Catalyst rockz!');
+    });
+
+    1;
+
+name and root are the only options used by Catalyst itself, name is the name of
+your application and root is the root directory for additional files like
+templates.
+
+_default is a built in private action that gets called when no other action
+matches the requested path.
+
+Private actions (prefixed by _) are normally not addressable from the outside
+world, but _default is an exception from this rule.
+
+This should be enough to get you started.
+
+=head1 Testing
+
+Catalyst has a built in http server for testing! (You can later easily use
+mod_perl in a production environment)
+
+    perl -I/home/joeuser/myapp/lib -MCatalyst::Test=MyApp -e1 3000
+
+You can also test you application directly from the command line.
+
+    perl -I/home/joeuser/myapp/lib -MCatalyst::Test=MyApp -e1 http://localhost/
+
+=head2 Components
+
+The application controller is everything you need for a simple Catalyst
+application, but that would very soon result in a ball of mud,
+and thats why we have components (Model/View/Controller).
+
+So the next step would be to create the directories for your components.
+Catalyst will automatically search for components in MyApp/Model, MyApp/View
+and MyApp/Controller.
+
+You normally start a component by inheriting everything from a blueprint,
+like Catalyst::Model::CDBI or Catalyst::View::TT.
+
+    # lib/MyApp/View/TT.pm
+    package MyApp::View::TT;
+
+    use strict;
+    use base 'Catalyst::View::TT';
+
+    1;
+
+Thats all, you can now use $c->forward('MyApp::View::TT') from your actions.
+
+Components without a blueprint can inherit everything they need from
+C<Catalyst::Base>.
+
+Now that you have a TT view, we can add it to the process chain.
+
+    # lib/MyApp.pm
+    package MyApp;
+
+    use strict;
+    use Catalyst '-Debug';
+
+    __PACKAGE__->config(
+        name => 'My Application',
+        root => '/home/joeuser/myapp/root'
+    );
+
+    __PACKAGE__->action(
+        _default => sub {
+            my ( $self, $c ) = @_;
+            $c->stash->{template} = 'index.tt';
+        },
+        _end => sub {
+            my ( $self, $c ) = @_;
+            $c->forward('MyApp::View::TT') unless $c->response->output;
+        }
+    );
+
+    1;
+
+_end is another built in private action that gets called at the end of a
+request. (_begin is the opposite of _end,  suprise...)
+So it's mostly used for the View components, to process templates and stuff.
+
+In our example we forward processing to MyApp::View::TT which will render the
+template defined in $c->stash->{template} to $c->response->output.
+
+Note that if you forward to a class, Catalyst will automatically call the
+process() method of that class which we in this case inherited from
+Catalyst::View::TT.
+
+The stash is a universal hash that we use to store and pass around all kind of
+data during the requests lifetime.
+
+And don't forget the template or you'll get the chance to look at our eyecandy
+debug screen. ;)
+
+    [%# root/index.tt #%]
+    Hello Catalyst!
+
+A CDBI Model class is equally simple.
+So the first thing we do is creating a database.
+
+    -- myapp.sql
+    CREATE TABLE foo (
+        id INTEGER PRIMARY KEY,
+        data TEXT
+    );
+
+    CREATE TABLE bar (
+        id INTEGER PRIMARY KEY,
+        foo INTEGER REFERENCES foo,
+        data TEXT
+    );
+
+    INSERT INTO foo (data) VALUES ('TEST!');
+
+
+    % sqlite /tmp/myapp.db < myapp.sql
+
+Now we can create a CDBI component.
+
+    # lib/MyApp/Model/CDBI.pm
+    package MyApp::Model::CDBI;
+
+    use strict;
+    use base 'Catalyst::Model::CDBI';
+
+    __PACKAGE__->config(
+        dsn           => 'dbi:SQLite:/tmp/myapp.db',
+        relationships => 1
+    );
+
+    1;
+
+Thats all, table layouts and relationships are automatically loaded for you.
+You can use $c->stash to pass data to your templates.
+
+    # lib/MyApp.pm
+    package MyApp;
+
+    use strict;
+    use Catalyst '-Debug';
+
+    __PACKAGE__->config(
+        name => 'My Application',
+        root => '/home/joeuser/myapp/root'
+    );
+
+    __PACKAGE__->action(
+        _end => sub {
+            my ( $self, $c ) = @_;
+            $c->stash->{template} ||= 'index.tt';
+            $c->forward('MyApp::View::TT') unless $c->response->output;
+        },
+        'view' => sub {
+            my ( $self, $c, $id ) = @_;
+            $c->stash->{item} = MyApp::Model::CDBI::Foo->retrieve($id);
+        }
+    );
+
+    1;
+
+    [%# root/index.tt #%]
+    The id is [% item.data %]
+
+Have fun!
+
+=head1 AUTHOR
+
+Sebastian Riedel, C<sri@oook.de>
+
+=head1 COPYRIGHT
+
+This program is free software, you can redistribute it and/or modify it under
+the same terms as Perl itself.
