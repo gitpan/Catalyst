@@ -7,7 +7,7 @@ use Catalyst::Log;
 
 __PACKAGE__->mk_classdata($_) for qw/_config log/;
 
-our $VERSION = '4.24';
+our $VERSION = '4.25';
 our @ISA;
 
 =head1 NAME
@@ -197,9 +197,9 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 THANK YOU
 
-Andrew Ruthven, Danijel Milicevic, David Naughton, Gary Ashton Jones,
-Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg and all the others
-who've helped.
+Andrew Ruthven, Christopher Hicks, Danijel Milicevic, David Naughton,
+Gary Ashton Jones, Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg,
+Tatsuhiko Miyagawa and all the others who've helped.
 
 =head1 LICENSE
 
