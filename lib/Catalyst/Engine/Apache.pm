@@ -97,8 +97,8 @@ sub finalize_output {
 sub prepare_cookies {
     my $c = shift;
     MP2
-      ? $c->request->cookies( { Apache::Cookie->fetch } )
-      : $c->request->cookies(
+      ? $c->req->cookies( { Apache::Cookie->fetch } )
+      : $c->req->cookies(
         { Apache::Cookie->new( $c->apache_request )->fetch } );
 }
 
@@ -108,7 +108,8 @@ sub prepare_cookies {
 
 sub prepare_headers {
     my $c = shift;
-    $c->request->headers->header( %{ $c->apache_request->headers_in } );
+    $c->req->method( $c->apache_request->method );
+    $c->req->headers->header( %{ $c->apache_request->headers_in } );
 }
 
 =head3 prepare_parameters
@@ -122,7 +123,7 @@ sub prepare_parameters {
         my @values = $c->apache_request->param($key);
         $args{$key} = @values == 1 ? $values[0] : \@values;
     }
-    $c->request->parameters( \%args );
+    $c->req->parameters( \%args );
 }
 
 =head3 prepare_path
@@ -131,16 +132,16 @@ sub prepare_parameters {
 
 sub prepare_path {
     my $c = shift;
-    $c->request->path( $c->apache_request->uri );
+    $c->req->path( $c->apache_request->uri );
     my $loc = $c->apache_request->location;
     no warnings 'uninitialized';
-    $c->request->{path} =~ s/^($loc)?\///;
+    $c->req->{path} =~ s/^($loc)?\///;
     my $base = URI->new;
     $base->scheme( $c->apache_request->protocol =~ /HTTPS/ ? 'https' : 'http' );
     $base->host( $c->apache_request->hostname );
     $base->port( $c->apache_request->get_server_port );
     $base->path( $c->apache_request->location );
-    $c->request->base( $base->as_string );
+    $c->req->base( $base->as_string );
 }
 
 =head3 prepare_request
@@ -161,7 +162,7 @@ sub prepare_uploads {
     my $c = shift;
     for my $upload ( $c->apache_request->upload ) {
         $upload = $c->apache_request->upload($upload) if MP2;
-        $c->request->uploads->{ $upload->name } = {
+        $c->req->uploads->{ $upload->name } = {
             fh       => $upload->fh,
             filename => $upload->filename,
             size     => $upload->size,

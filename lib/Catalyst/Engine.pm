@@ -16,7 +16,7 @@ require Module::Pluggable::Fast;
 $Data::Dumper::Terse = 1;
 
 __PACKAGE__->mk_classdata($_) for qw/actions components/;
-__PACKAGE__->mk_accessors(qw/entrance request response/);
+__PACKAGE__->mk_accessors(qw/request response/);
 
 *comp = \&component;
 *req  = \&request;
@@ -74,22 +74,20 @@ sub action {
         }
     }
     elsif ($action) {
-        if ( my $match = $self->actions->{plain}->{$action} ) {
-            return [$match];
-        }
+        if    ( my $p = $self->actions->{plain}->{$action} ) { return [$p] }
+        elsif ( my $r = $self->actions->{regex}->{$action} ) { return [$r] }
         else {
             while ( my ( $regex, $name ) =
                 each %{ $self->actions->{compiled} } )
             {
                 if ( $action =~ $regex ) {
-                    my $match = $self->actions->{regex}->{$name};
                     my @matches;
                     for my $i ( 1 .. 9 ) {
                         no strict 'refs';
                         last unless ${$i};
                         push @matches, ${$i};
                     }
-                    return [ $match, $name, \@matches ];
+                    return [ $name, \@matches ];
                 }
             }
         }
@@ -347,12 +345,10 @@ sub handler {
     eval {
         my $handler = sub {
             my $c = $class->prepare($r);
-            if ( $c->entrance ) {
+            if ( $c->req->action ) {
                 $c->forward('_begin') if $c->actions->{plain}->{_begin};
-                my ( $class, $code ) = @{ $c->entrance };
-                $class = $c->components->{$class} || $class;
-                $c->process( $class, $code );
-                $c->forward('_end') if $c->actions->{plain}->{_end};
+                $c->forward( $c->req->action ) if $c->req->action;
+                $c->forward('_end')            if $c->actions->{plain}->{_end};
             }
             else {
                 my $action = $c->req->path;
@@ -430,28 +426,28 @@ sub prepare_action {
     my $path = $c->req->path;
     return if $path =~ /^_/;
     my @path = split /\//, $c->req->path;
-    my @args;
+    $c->req->args( \my @args );
     while (@path) {
         my $path = join '/', @path;
         if ( my $result = $c->action($path) ) {
-            my $entrance = $result->[0];
 
             # It's a regex
-            if ( $#{$result} == 2 ) {
-                my $match    = $result->[1];
-                my @snippets = @{ $result->[2] };
+            if ($#$result) {
+                my $match    = $result->[0];
+                my @snippets = @{ $result->[1] };
                 $c->log->debug(qq/Requested action "$path" matched "$match"/)
                   if $c->debug;
                 $c->log->debug(
                     'Snippets are "' . join( ' ', @snippets ) . '"' )
                   if ( $c->debug && @snippets );
-                $c->req->match($match);
+                $c->req->action($match);
                 $c->req->snippets( \@snippets );
             }
-            else { $c->log->debug(qq/Requested action "$path"/) if $c->debug }
-            $c->entrance($entrance);
-            $c->req->action($path);
-            $c->req->args( \@args );
+            else {
+                $c->req->action($path);
+                $c->log->debug(qq/Requested action "$path"/) if $c->debug;
+            }
+            $c->req->match($path);
             $c->log->debug( 'Arguments are "' . join( '/', @args ) . '"' )
               if ( $c->debug && @args );
             last;
@@ -459,9 +455,9 @@ sub prepare_action {
         unshift @args, pop @path;
     }
     unless ( $c->req->action ) {
-        if ( my $result = $c->actions->{plain}->{_default} ) {
-            $c->entrance($result);
-            $c->req->action( $c->req->path );
+        if ( $c->actions->{plain}->{_default} ) {
+            $c->req->match('');
+            $c->req->action('_default');
             $c->log->debug('Using default action') if $c->debug;
         }
     }

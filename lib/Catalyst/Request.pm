@@ -4,8 +4,8 @@ use strict;
 use base 'Class::Accessor::Fast';
 
 __PACKAGE__->mk_accessors(
-    qw/action arguments base cookies headers match parameters path snippets
-      uploads user/
+    qw/action arguments base cookies headers match method parameters path
+      snippets uploads user/
 );
 
 *args   = \&arguments;
@@ -70,6 +70,12 @@ Returns a hashref containing the parameters.
 Contains the path.
 
     print $c->request->path;
+
+=head3 method
+
+Contains the request method.
+
+    print $c->request->method
 
 =head3 snippets
 

@@ -78,9 +78,7 @@ sub finalize_output {
 
 =cut
 
-sub prepare_cookies {
-    shift->request->cookies( { CGI::Cookie->fetch } );
-}
+sub prepare_cookies { shift->req->cookies( { CGI::Cookie->fetch } ) }
 
 =head3 prepare_headers
 
@@ -88,9 +86,10 @@ sub prepare_cookies {
 
 sub prepare_headers {
     my $c = shift;
+    $c->req->method( $c->cgi->request_method );
     for my $header ( $c->cgi->http ) {
         ( my $field = $header ) =~ s/^HTTPS?_//;
-        $c->request->headers->header( $field => $c->cgi->http($header) );
+        $c->req->headers->header( $field => $c->cgi->http($header) );
     }
 }
 
@@ -105,7 +104,7 @@ sub prepare_parameters {
         my @values = split "\0", $value;
         $vars{$key} = @values <= 1 ? $values[0] : \@values;
     }
-    $c->request->parameters( {%vars} );
+    $c->req->parameters( {%vars} );
 }
 
 =head3 prepare_path
@@ -114,16 +113,16 @@ sub prepare_parameters {
 
 sub prepare_path {
     my $c = shift;
-    $c->request->path( $c->cgi->url( -absolute => 1, -path_info => 1 ) );
+    $c->req->path( $c->cgi->url( -absolute => 1, -path_info => 1 ) );
     my $loc = $c->cgi->url( -absolute => 1 );
     no warnings 'uninitialized';
-    $c->request->{path} =~ s/^($loc)?\///;
-    $c->request->{path} .= '/' if $c->request->path eq $loc;
+    $c->req->{path} =~ s/^($loc)?\///;
+    $c->req->{path} .= '/' if $c->req->path eq $loc;
     my $base = $c->cgi->url;
     $base =~ s/-e$// if $ENV{CATALYST_TEST};
     $base = URI->new($base);
     $base->path('/') unless $base->path;
-    $c->request->base( $base->as_string );
+    $c->req->base( $base->as_string );
 }
 
 =head3 prepare_request
@@ -139,8 +138,8 @@ sub prepare_request { shift->cgi( CGI::Simple->new ) }
 sub prepare_uploads {
     my $c = shift;
     for my $name ( $c->cgi->upload ) {
-        my $filename = $c->request->parameters->{$name};
-        $c->request->uploads->{$name} = {
+        my $filename = $c->req->params->{$name};
+        $c->req->uploads->{$name} = {
             fh       => $c->cgi->upload($filename),
             filename => $filename,
             size     => $c->cgi->upload_info( $filename, 'size' ),
