@@ -10,7 +10,7 @@ SYNOPSIS
 
         use Catalyst qw/-Debug -Engine=CGI/;
 
-        __PACKAGE__->action( _default => sub { $_[1]->res->output('Hello') } );
+        __PACKAGE__->action( '!default' => sub { $_[1]->res->output('Hello') } );
 
         __PACKAGE__->action(
             'index.html' => sub {
@@ -70,13 +70,14 @@ DESCRIPTION
     Returns a hashref containing your applications settings.
 
 SEE ALSO
-    Catalyst::Manual, Catalyst::Test, Catalyst::Request, Catalyst::Response
+    Catalyst::Manual, Catalyst::Test, Catalyst::Request, Catalyst::Response,
+    Catalyst::Engine
 
 AUTHOR
     Sebastian Riedel, "sri@oook.de"
 
 THANK YOU
-    Marcus Ramberg and all the others who've helped.
+    Gary Ashton Jones, Marcus Ramberg and all the others who've helped.
 
 LICENSE
     This library is free software . You can redistribute it and/or modify it

@@ -5,7 +5,6 @@ use base qw/Class::Data::Inheritable Class::Accessor::Fast/;
 use NEXT;
 
 __PACKAGE__->mk_classdata('_config');
-__PACKAGE__->_config( {} );
 
 =head1 NAME
 
@@ -64,6 +63,7 @@ sub new {
 
 sub config {
     my $self = shift;
+    $self->_config( {} ) unless $self->_config;
     if ( $_[0] ) {
         my $config = $_[1] ? {@_} : $_[0];
         while ( my ( $key, $val ) = each %$config ) {

@@ -21,7 +21,7 @@ Everything begins with a small application controller.
         root => '/home/joeuser/myapp/root'
     );
 
-    __PACKAGE__->action( _default => sub {
+    __PACKAGE__->action( '!default' => sub {
         my ( $self, $c ) = @_;
         $c->response->output('Catalyst rockz!');
     });
@@ -32,10 +32,10 @@ C<name> and C<root> are the only options used by Catalyst itself, C<name> is
 the name of your application and C<root> is the root directory for additional
 files like templates.
 
-C<_default> is a built in private action that gets called when no other action
+C<!default> is a built in private action that gets called when no other action
 matches the requested path.
-Private actions (prefixed by _) are normally not addressable from the outside
-world, but C<_default> is an exception from this rule.
+Private actions (prefixed by !) are normally not addressable from the outside
+world, but C<!default> is an exception from this rule.
 
 This should be enough to get you started.
 
@@ -89,11 +89,11 @@ Add the component to the process chain.
     );
 
     __PACKAGE__->action(
-        _default => sub {
+        '!default' => sub {
             my ( $self, $c ) = @_;
             $c->stash->{template} = 'index.tt';
         },
-        _end => sub {
+        '!end' => sub {
             my ( $self, $c ) = @_;
             $c->forward('MyApp::View::TT') unless $c->response->output;
         }
@@ -101,8 +101,8 @@ Add the component to the process chain.
 
     1;
 
-C<_end> is another built in private action that gets called at the end of a
-request. (C<_begin> is the opposite of C<_end>...suprise...)
+C<!end> is another built in private action that gets called at the end of a
+request. (C<!begin> is the opposite of C<!end>...suprise...)
 So it's mostly used for the View components, to process templates and stuff.
 
 In the example you forwarded processing to MyApp::View::TT, which will render
@@ -170,7 +170,7 @@ Use $c->stash to pass data to your templates.
     );
 
     __PACKAGE__->action(
-        _end => sub {
+        '!end' => sub {
             my ( $self, $c ) = @_;
             $c->stash->{template} ||= 'index.tt';
             $c->forward('MyApp::View::TT') unless $c->response->output;

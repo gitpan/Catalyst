@@ -6,10 +6,8 @@ use UNIVERSAL::require;
 use Catalyst::Log;
 
 __PACKAGE__->mk_classdata($_) for qw/_config log/;
-__PACKAGE__->_config( {} );
-__PACKAGE__->log( Catalyst::Log->new );
 
-our $VERSION = '2.99_14';
+our $VERSION = '2.99_15';
 our @ISA;
 
 =head1 NAME
@@ -26,7 +24,7 @@ Catalyst - The Elegant MVC Web Application Framework
 
     use Catalyst qw/-Debug -Engine=CGI/;
 
-    __PACKAGE__->action( _default => sub { $_[1]->res->output('Hello') } );
+    __PACKAGE__->action( '!default' => sub { $_[1]->res->output('Hello') } );
 
     __PACKAGE__->action(
         'index.html' => sub {
@@ -99,6 +97,7 @@ Returns a hashref containing your applications settings.
 
 sub config {
     my $self = shift;
+    $self->_config( {} ) unless $self->_config;
     if ( $_[0] ) {
         my $config = $_[1] ? {@_} : $_[0];
         while ( my ( $key, $val ) = each %$config ) {
@@ -119,6 +118,7 @@ sub import {
           sub { Catalyst::Engine::handler( $caller, @_ ) };
         push @{"$caller\::ISA"}, $self;
     }
+    $self->log( Catalyst::Log->new );
 
     # Options
     my $engine =
@@ -167,7 +167,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 THANK YOU
 
-Marcus Ramberg and all the others who've helped.
+Gary Ashton Jones, Marcus Ramberg and all the others who've helped.
 
 =head1 LICENSE
 

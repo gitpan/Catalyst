@@ -38,7 +38,7 @@ See L<Catalyst>.
 
 Add one or more actions.
 
-    $c->action( _foo => sub { $_[1]->res->output('Foo!') } );
+    $c->action( '!foo' => sub { $_[1]->res->output('Foo!') } );
 
 Get an action's class and coderef.
 
@@ -67,6 +67,14 @@ sub action {
                 $self->actions->{compiled}->{qr/$regex/} = $name;
                 $self->actions->{regex}->{$name} = [ $class, $code ];
             }
+            elsif ( $name =~ /\?(.*)$/ ) {
+                $name = $1;
+                $caller =~ /^.*::[(M)(Model)(V)(View)(C)(Controller)]+::(.*)$/;
+                my $prefix = lc $1 || '';
+                $prefix =~ s/::/_/g;
+                $name = "$prefix/$name" if $prefix;
+                $self->actions->{plain}->{$name} = [ $class, $code ];
+            }
             else { $self->actions->{plain}->{$name} = [ $class, $code ] }
             $self->log->debug(
                 qq/"$caller" defined "$name" as "$code" from "$class"/)
@@ -81,13 +89,13 @@ sub action {
                 each %{ $self->actions->{compiled} } )
             {
                 if ( $action =~ $regex ) {
-                    my @matches;
+                    my @snippets;
                     for my $i ( 1 .. 9 ) {
                         no strict 'refs';
                         last unless ${$i};
-                        push @matches, ${$i};
+                        push @snippets, ${$i};
                     }
-                    return [ $name, \@matches ];
+                    return [ $name, \@snippets ];
                 }
             }
         }
@@ -298,7 +306,7 @@ sub finalize_output { }
 Forward processing to a private/public action or a method from a class.
 If you define a class without method it will default to process().
 
-    $c->forward('_foo');
+    $c->forward('!foo');
     $c->forward('index.html');
     $c->forward(qw/MyApp::Model::CDBI::Foo do_stuff/);
     $c->forward('MyApp::View::TT');
@@ -346,16 +354,14 @@ sub handler {
         my $handler = sub {
             my $c = $class->prepare($r);
             if ( $c->req->action ) {
-                $c->forward('_begin') if $c->actions->{plain}->{_begin};
+                $c->forward('!begin') if $c->actions->{plain}->{'!begin'};
                 $c->forward( $c->req->action ) if $c->req->action;
-                $c->forward('_end')            if $c->actions->{plain}->{_end};
+                $c->forward('!end') if $c->actions->{plain}->{'!end'};
             }
             else {
                 my $action = $c->req->path;
                 my $error  = $action
-                  ? $action =~ /^_/
-                  ? qq/Private resource "$action"/
-                  : qq/Unknown resource "$action"/
+                  ? qq/Unknown resource "$action"/
                   : "Congratulations, you're on Catalyst!";
                 $c->log->error($error) if $c->debug;
                 $c->errors($error);
@@ -371,7 +377,7 @@ sub handler {
     };
     if ( my $error = $@ ) {
         chomp $error;
-        $class->log->error(qq/Catched exception in engine "$error"/);
+        $class->log->error(qq/Caught exception in engine "$error"/);
     }
     return $status;
 }
@@ -424,7 +430,6 @@ Prepare action.
 sub prepare_action {
     my $c    = shift;
     my $path = $c->req->path;
-    return if $path =~ /^_/;
     my @path = split /\//, $c->req->path;
     $c->req->args( \my @args );
     while (@path) {
@@ -455,9 +460,9 @@ sub prepare_action {
         unshift @args, pop @path;
     }
     unless ( $c->req->action ) {
-        if ( $c->actions->{plain}->{_default} ) {
+        if ( $c->actions->{plain}->{'!default'} ) {
             $c->req->match('');
-            $c->req->action('_default');
+            $c->req->action('!default');
             $c->log->debug('Using default action') if $c->debug;
         }
     }
@@ -535,7 +540,7 @@ sub process {
     };
     if ( my $error = $@ ) {
         chomp $error;
-        $error = qq/Catched exception "$error"/;
+        $error = qq/Caught exception "$error"/;
         $c->log->error($error);
         $c->errors($error) if $c->debug;
         return 0;
@@ -578,7 +583,7 @@ sub process_roles { 0 }
 
 Remove an action.
 
-    $c->remove_action('_foo');
+    $c->remove_action('!foo');
 
 =cut
 
@@ -671,8 +676,11 @@ sub setup_components {
         package $class;
         import Module::Pluggable::Fast
           name   => '_components',
-          search =>
-          [ '$class\::Controller', '$class\::Model', '$class\::View' ];
+          search => [
+            '$class\::Controller', '$class\::C',
+            '$class\::Model',      '$class\::M',
+            '$class\::View',       '$class\::V'
+          ];
 
     if ( my $error = $@ ) {
         chomp $error;

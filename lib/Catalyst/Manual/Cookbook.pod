@@ -14,7 +14,7 @@ You can force Catalyst to display the debug screen at the end of the request by
 placing a die() call in the _end action.
 
     __PACKAGE__->action(
-        _end => sub {
+        '!end' => sub {
             my ( $self, $c ) = @_;
             die "testing";
         }
