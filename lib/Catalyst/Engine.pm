@@ -379,7 +379,9 @@ sub handler {
         if ( $class->debug ) {
             my $elapsed;
             ( $elapsed, $status ) = $class->benchmark($handler);
-            $class->log->info( sprintf "Request took %f seconds", $elapsed );
+            $elapsed = sprintf '%f', $elapsed;
+            my $av = sprintf '%.3f', 1 / $elapsed;
+            $class->log->info( "Request took $elapsed" . "s ($av/s)" );
         }
         else { $status = &$handler }
     };
@@ -417,7 +419,7 @@ sub prepare {
     }, $class;
     if ( $c->debug ) {
         my $secs = time - $START;
-        my $av = sprintf '%.2f', $COUNT / $secs;
+        my $av = sprintf '%.3f', $COUNT / $secs;
         $c->log->debug('********************************');
         $c->log->debug("* Request $COUNT ($av/s) [$$]");
         $c->log->debug('********************************');
@@ -546,8 +548,7 @@ sub process {
             my $elapsed;
             ( $elapsed, $status ) =
               $c->benchmark( $code, $class, $c, @{ $c->req->args } );
-            $c->log->info( sprintf qq/Processing "$code" took %f seconds/,
-                $elapsed )
+            $c->log->info( sprintf qq/Processing "$code" took %fs/, $elapsed )
               if $c->debug;
         }
         else { $status = &$code( $class, $c, @{ $c->req->args } ) }

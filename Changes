@@ -1,6 +1,9 @@
 This file documents the revision history for Perl extension Catalyst.
 
-3.00  Wed Feb16 20:00:00 2005
+3.01  Wed Feb 16 20:30:00 2005
+        - better statistics
+
+3.00  Wed Feb 16 20:00:00 2005
         - real version number for CPAN.pm
         - fixed redirect in CGI engine
         - more statistics in debug logs
