@@ -19,8 +19,6 @@ extend Catalyst.
         prepare_parameters
         prepare_uploads
       process
-        process_permission
-          process_roles
       finalize
         finalize_headers
         finalize_output

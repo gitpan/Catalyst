@@ -193,7 +193,6 @@ sub finalize {
             my $req   = encode_entities Dumper $c->req;
             my $res   = encode_entities Dumper $c->res;
             my $stash = encode_entities Dumper $c->stash;
-            my $roles = encode_entities Dumper $c->roles;
             $infos = <<"";
 <br/>
 <b><u>Request</u></b><br/>
@@ -202,8 +201,6 @@ sub finalize {
 <pre>$res</pre>
 <b><u>Stash</u></b><br/>
 <pre>$stash</pre>
-<b><u>Roles</u></b><br/>
-<pre>$roles</pre>
 
         }
         else {
@@ -411,7 +408,6 @@ sub prepare {
         response => Catalyst::Response->new(
             { cookies => {}, headers => HTTP::Headers->new, status => 200 }
         ),
-        roles => [],
         stash => {}
     }, $class;
     if ( $c->debug ) {
@@ -561,37 +557,6 @@ sub process {
     return $status;
 }
 
-=head3 process_permission
-
-Calls process_roles.
-
-=cut
-
-sub process_permission {
-    my ( $c, $roles ) = @_;
-    if ($roles) {
-        return 1 if $#$roles < 0;
-        my $string = join ' ', @$roles;
-        if ( $c->process_roles($roles) ) {
-            $c->log->debug(qq/Permission granted "$string"/) if $c->debug;
-        }
-        else {
-            $c->log->debug(qq/Permission denied "$string"/) if $c->debug;
-            return 0;
-        }
-    }
-    return 1;
-}
-
-=head3 process_roles
-
-Check if the requesting user has one of the needed roles.
-Defaults to 0.
-
-=cut
-
-sub process_roles { 0 }
-
 =head3 remove_action
 
 Remove an action.
@@ -626,36 +591,6 @@ Returns a C<Catalyst::Request> object.
 Returns a C<Catalyst::Response> object.
 
     my $res = $c->res;
-
-=head3 roles
-
-Check permissions for roles and return true or false.
-
-    $c->roles(qw/foo bar/);
-
-Returns an arrayref containing the verified roles.
-
-    my @roles = @{ $c->roles };
-
-=cut
-
-sub roles {
-    my $c = shift;
-    my $roles = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
-    if ( $_[0] ) {
-        my @roles;
-        foreach my $role (@$roles) {
-            push @roles, $role unless grep $role, @{ $c->{roles} };
-        }
-        return 1 unless @roles;
-        if ( $c->process_permission( \@roles ) ) {
-            $c->{roles} = [ @{ $c->{roles} }, @roles ];
-            return 1;
-        }
-        else { return 0 }
-    }
-    return $c->{roles};
-}
 
 =head3 setup
 
