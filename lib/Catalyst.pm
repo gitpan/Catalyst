@@ -5,9 +5,9 @@ use base 'Class::Data::Inheritable';
 use UNIVERSAL::require;
 use Catalyst::Log;
 
-__PACKAGE__->mk_classdata($_) for qw/_config log/;
+__PACKAGE__->mk_classdata($_) for qw/_config engine log/;
 
-our $VERSION = '4.32';
+our $VERSION = '4.33';
 our @ISA;
 
 =head1 NAME
@@ -152,8 +152,8 @@ sub import {
         }
     }
 
-    unless ( $self->log ) {
-        $self->log( Catalyst::Log->new );
+    unless ( $caller->log ) {
+        $caller->log( Catalyst::Log->new );
     }
 
     # Options
@@ -194,8 +194,25 @@ sub import {
         no strict 'refs';
         push @{"$caller\::ISA"}, $engine;
     }
+    $caller->engine($engine);
     $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
 }
+
+=item $c->engine
+
+Contains the engine class.
+
+=item $c->log
+
+Contains the logging object.  Unless it is already set Catalyst sets this up with a
+C<Catalyst::Log> object.  To use your own log class:
+
+    $c->log( MyLogger->new );
+    $c->log->info("now logging with my own logger!");
+
+Your log class should implement the methods described in the C<Catalyst::Log>
+man page.
+
 
 =back
 
@@ -222,9 +239,9 @@ Sebastian Riedel, C<sri@oook.de>
 =head1 THANK YOU
 
 Andrew Ford, Andrew Ruthven, Christian Hansen, Christopher Hicks,
-Danijel Milicevic, David Naughton, Gary Ashton Jones, Jesse Sheidlower,
-Johan Lindstrom, Marcus Ramberg, Tatsuhiko Miyagawa and all the others
-who've helped.
+Dan Sully, Danijel Milicevic, David Naughton, Gary Ashton Jones,
+Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg, Tatsuhiko Miyagawa
+and all the others who've helped.
 
 =head1 LICENSE
 

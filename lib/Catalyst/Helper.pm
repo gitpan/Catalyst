@@ -39,8 +39,8 @@ sub mk_app {
     $self->_mk_changes;
     $self->_mk_apptest;
     $self->_mk_cgi;
+    $self->_mk_fcgi;
     $self->_mk_server;
-    $self->_mk_cgiserver;
     $self->_mk_test;
     $self->_mk_create;
     return 1;
@@ -325,10 +325,7 @@ sub _mk_cgi {
     $self->mk_file( "$script\/nph-cgi.pl", <<"EOF");
 $Config{startperl} -w
 
-BEGIN {
-    \$ENV{CATALYST_ENGINE} = 'CGI';
-    \$ENV{CATALYST_TEST}   = 1;
-}
+BEGIN { \$ENV{CATALYST_ENGINE} = 'CGI' }
 
 use strict;
 use FindBin;
@@ -368,6 +365,53 @@ EOF
     chmod 0700, "$script/nph-cgi.pl";
 }
 
+sub _mk_fcgi {
+    my $self   = shift;
+    my $name   = $self->{name};
+    my $script = $self->{script};
+    $self->mk_file( "$script\/fcgi.pl", <<"EOF");
+$Config{startperl} -w
+
+BEGIN { \$ENV{CATALYST_ENGINE} = 'FCGI' }
+
+use strict;
+use FindBin;
+use lib "\$FindBin::Bin/../lib";
+use $name;
+
+$name->run;
+
+1;
+__END__
+
+=head1 NAME
+
+fcgi - Catalyst FCGI
+
+=head1 SYNOPSIS
+
+See L<Catalyst::Manual>
+
+=head1 DESCRIPTION
+
+Run a Catalyst application as fcgi.
+
+=head1 AUTHOR
+
+Sebastian Riedel, C<sri\@oook.de>
+
+=head1 COPYRIGHT
+
+Copyright 2004 Sebastian Riedel. All rights reserved.
+
+This library is free software. You can redistribute it and/or modify it under
+the same terms as perl itself.
+
+=cut
+EOF
+    chmod 0700, "$script/fcgi.pl";
+}
+
 sub _mk_server {
     my $self   = shift;
     my $name   = $self->{name};
@@ -375,10 +419,7 @@ sub _mk_server {
     $self->mk_file( "$script\/server.pl", <<"EOF");
 $Config{startperl} -w
 
-BEGIN { 
-    \$ENV{CATALYST_ENGINE} = 'Server';
-    \$ENV{CATALYST_TEST}   = 1;
-}
+BEGIN { \$ENV{CATALYST_ENGINE} = 'Server' }
 
 use strict;
 use Getopt::Long;
@@ -433,77 +474,6 @@ the same terms as perl itself.
 =cut
 EOF
     chmod 0700, "$script/server.pl";
-}
-
-sub _mk_cgiserver {
-    my $self   = shift;
-    my $name   = $self->{name};
-    my $script = $self->{script};
-    $self->mk_file( "$script\/cgi-server.pl", <<"EOF");
-$Config{startperl} -w
-
-BEGIN { 
-    \$ENV{CATALYST_ENGINE} = 'Server';
-    \$ENV{CATALYST_TEST}   = 1;
-}
-
-use strict;
-use Getopt::Long;
-use Pod::Usage;
-use FindBin;
-use lib "\$FindBin::Bin/../lib";
-use File::Spec;
-use $name;
-
-my \$help = 0;
-my \$port = 3000;
-
-GetOptions( 'help|?' => \\\$help, 'port=s' => \\\$port );
-
-pod2usage(1) if \$help;
-
-$name->run( \$port, File::Spec->catfile( \$FindBin::Bin, 'nph-cgi.pl' ) );
-
-1;
-__END__
-
-=head1 NAME
-
-cgi-server - Catalyst CGI Testserver
-
-=head1 SYNOPSIS
-
-cgi-server.pl [options]
-
- Options:
-   -? -help    display this help and exits
-   -p -port    port (defaults to 3000)
-
- See also:
-   perldoc Catalyst::Manual
-   perldoc Catalyst::Manual::Intro
-
-=head1 DESCRIPTION
-
-Run a Catalyst CGI Testserver for this application.
-
-Similar to the regular server but doesn't require a restart
-after code changes!
-
-=head1 AUTHOR
-
-Sebastian Riedel, C<sri\@oook.de>
-
-=head1 COPYRIGHT
-
-Copyright 2004 Sebastian Riedel. All rights reserved.
-
-This library is free software. You can redistribute it and/or modify it under
-the same terms as perl itself.
-
-=cut
-EOF
-    chmod 0700, "$script/cgi-server.pl";
 }
 
 sub _mk_test {
