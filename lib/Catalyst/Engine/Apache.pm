@@ -1,30 +1,12 @@
 package Catalyst::Engine::Apache;
 
 use strict;
-use mod_perl;
-use constant MP2 => $mod_perl::VERSION >= 1.99;
 use base 'Catalyst::Engine';
+
 use URI;
+use URI::http;
 
-# mod_perl
-if (MP2) {
-    require Apache2;
-    require Apache::Connection;
-    require Apache::RequestIO;
-    require Apache::RequestRec;
-    require Apache::SubRequest;
-    require Apache::RequestUtil;
-    require APR::URI;
-    require Apache::URI;
-}
-else { require Apache }
-
-# libapreq
-require Apache::Request;
-require Apache::Cookie;
-require Apache::Upload if MP2;
-
-__PACKAGE__->mk_accessors(qw/apache_request original_request/);
+__PACKAGE__->mk_accessors(qw/apache/);
 
 =head1 NAME
 
@@ -42,13 +24,9 @@ This is the Catalyst engine specialized for Apache (i.e. for mod_perl).
 
 =over 4
 
-=item $c->apache_request
+=item $c->apache
 
 Returns an C<Apache::Request> object.
-
-=item $c->original_request
-
-Returns the original Apache request object.
 
 =back
 
@@ -58,43 +36,13 @@ This class overloads some methods from C<Catalyst::Engine>.
 
 =over 4
 
-=item $c->finalize_headers
-
-=cut
-
-sub finalize_headers {
-    my $c = shift;
-    for my $name ( $c->response->headers->header_field_names ) {
-        next if $name =~ /Content-Type/i;
-        $c->original_request->headers_out->set(
-            $name => $c->response->headers->header($name) );
-    }
-    while ( my ( $name, $cookie ) = each %{ $c->response->cookies } ) {
-        my %cookie = ( -name => $name, -value => $cookie->{value} );
-        $cookie->{-expires} = $cookie->{expires} if $cookie->{expires};
-        $cookie->{-domain}  = $cookie->{domain}  if $cookie->{domain};
-        $cookie->{-path}    = $cookie->{path}    if $cookie->{path};
-        $cookie->{-secure}  = $cookie->{secure}  if $cookie->{secure};
-        my $cookie = Apache::Cookie->new( $c->original_request, %cookie );
-        MP2
-          ? $c->apache_request->err_headers_out->add(
-            'Set-Cookie' => $cookie->as_string )
-          : $cookie->bake;
-    }
-    $c->original_request->status( $c->response->status );
-    $c->original_request->content_type( $c->response->headers->content_type
-          || 'text/plain' );
-    MP2 || $c->apache_request->send_http_header;
-    return 0;
-}
-
 =item $c->finalize_output
 
 =cut
 
 sub finalize_output {
     my $c = shift;
-    $c->original_request->print( $c->response->{output} );
+    $c->apache->print( $c->response->output );
 }
 
 =item $c->prepare_connection
@@ -103,20 +51,8 @@ sub finalize_output {
 
 sub prepare_connection {
     my $c = shift;
-    $c->req->hostname( $c->apache_request->connection->remote_host );
-    $c->req->address( $c->apache_request->connection->remote_ip );
-}
-
-=item $c->prepare_cookies
-
-=cut
-
-sub prepare_cookies {
-    my $c = shift;
-    MP2
-      ? $c->req->cookies( { Apache::Cookie->fetch } )
-      : $c->req->cookies(
-        { Apache::Cookie->new( $c->apache_request )->fetch } );
+    $c->request->hostname( $c->apache->connection->remote_host );
+    $c->request->address( $c->apache->connection->remote_ip );
 }
 
 =item $c->prepare_headers
@@ -125,8 +61,8 @@ sub prepare_cookies {
 
 sub prepare_headers {
     my $c = shift;
-    $c->req->method( $c->apache_request->method );
-    $c->req->headers->header( %{ $c->apache_request->headers_in } );
+    $c->request->method( $c->apache->method );
+    $c->request->header( %{ $c->apache->headers_in } );
 }
 
 =item $c->prepare_parameters
@@ -135,31 +71,32 @@ sub prepare_headers {
 
 sub prepare_parameters {
     my $c = shift;
-    my %args;
-    foreach my $key ( $c->apache_request->param ) {
-        my @values = $c->apache_request->param($key);
-        $args{$key} = @values == 1 ? $values[0] : \@values;
+
+    foreach my $key ( $c->apache->param ) {
+        my @values = $c->apache->param($key);
+        $c->req->parameters->{$key} = ( @values == 1 ) ? $values[0] : \@values;
     }
-    $c->req->parameters( \%args );
 }
 
 =item $c->prepare_path
 
 =cut
 
+# XXX needs fixing, only work with <Location> directive, 
+# not <Directory> directive
 sub prepare_path {
     my $c = shift;
-    $c->req->path( $c->apache_request->uri );
-    my $loc = $c->apache_request->location;
+    $c->request->path( $c->apache->uri );
+    my $loc = $c->apache->location;
     no warnings 'uninitialized';
     $c->req->{path} =~ s/^($loc)?\///;
     my $base = URI->new;
     $base->scheme( $ENV{HTTPS} ? 'https' : 'http' );
-    $base->host( $c->apache_request->hostname );
-    $base->port( $c->apache_request->get_server_port );
-    my $path = $c->apache_request->location;
+    $base->host( $c->apache->hostname );
+    $base->port( $c->apache->get_server_port );
+    my $path = $c->apache->location;
     $base->path( $path =~ /\/$/ ? $path : "$path/" );
-    $c->req->base( $base->as_string );
+    $c->request->base( $base->as_string );
 }
 
 =item $c->prepare_request($r)
@@ -168,25 +105,12 @@ sub prepare_path {
 
 sub prepare_request {
     my ( $c, $r ) = @_;
-    $c->apache_request( Apache::Request->new($r) );
-    $c->original_request($r);
+    $c->apache( Apache::Request->new($r) );
 }
 
-=item $c->prepare_uploads
+=item $c->run
 
 =cut
-
-sub prepare_uploads {
-    my $c = shift;
-    for my $upload ( $c->apache_request->upload ) {
-        $upload = $c->apache_request->upload($upload) if MP2;
-        $c->req->uploads->{ $upload->filename } = {
-            fh   => $upload->fh,
-            size => $upload->size,
-            type => $upload->type
-        };
-    }
-}
 
 sub run { }
 

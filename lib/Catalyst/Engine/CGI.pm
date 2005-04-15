@@ -2,13 +2,10 @@ package Catalyst::Engine::CGI;
 
 use strict;
 use base 'Catalyst::Engine';
+
+use CGI;
 use URI;
-
-require CGI::Simple;
-require CGI::Cookie;
-
-$CGI::Simple::POST_MAX        = 1048576;
-$CGI::Simple::DISABLE_UPLOADS = 0;
+use URI::http;
 
 __PACKAGE__->mk_accessors('cgi');
 
@@ -34,17 +31,12 @@ appropriate engine module.
 =head1 DESCRIPTION
 
 This is the Catalyst engine specialized for the CGI environment (using the
-C<CGI::Simple> and C<CGI::Cookie> modules).  Normally Catalyst will select the
+C<CGI> and C<CGI::Cookie> modules).  Normally Catalyst will select the
 appropriate engine according to the environment that it detects, however you
 can force Catalyst to use the CGI engine by specifying the following in your
 application module:
 
     use Catalyst qw(-Engine=CGI);
-
-Catalyst::Engine::CGI generates a full set of HTTP headers, which means that
-applications using the engine must be be configured as "Non-parsed Headers"
-scripts (at least when running under Apache).  To configure this under Apache
-name the starting with C<nph->.
 
 The performance of this way of using Catalyst is not expected to be
 useful in production applications, but it may be helpful for development.
@@ -53,19 +45,15 @@ useful in production applications, but it may be helpful for development.
 
 =over 4
 
-=item $c->run
-
-To be called from a CGI script to start the Catalyst application.
-
 =item $c->cgi
 
-This config parameter contains the C<CGI::Simple> object.
+This config parameter contains the C<CGI> object.
 
 =back
 
 =head1 OVERLOADED METHODS
 
-This class overloads some methods from C<Catalyst>.
+This class overloads some methods from C<Catalyst::Engine>.
 
 =over 4
 
@@ -75,24 +63,11 @@ This class overloads some methods from C<Catalyst>.
 
 sub finalize_headers {
     my $c = shift;
-    my %headers;
-    $headers{-status} = $c->response->status if $c->response->status;
-    for my $name ( $c->response->headers->header_field_names ) {
-        $headers{"-$name"} = $c->response->headers->header($name);
-    }
-    my @cookies;
-    while ( my ( $name, $cookie ) = each %{ $c->response->cookies } ) {
-        push @cookies, $c->cgi->cookie(
-            -name    => $name,
-            -value   => $cookie->{value},
-            -expires => $cookie->{expires},
-            -domain  => $cookie->{domain},
-            -path    => $cookie->{path},
-            -secure  => $cookie->{secure} || 0
-        );
-    }
-    $headers{-cookie} = \@cookies if @cookies;
-    print $c->cgi->header(%headers);
+
+    $c->response->header( Status => $c->response->status );
+
+    print $c->response->headers->as_string("\015\012");
+    print "\015\012";
 }
 
 =item $c->finalize_output
@@ -112,17 +87,9 @@ sub finalize_output {
 
 sub prepare_connection {
     my $c = shift;
-    $c->req->hostname( $c->cgi->remote_host );
-    $c->req->address( $c->cgi->remote_addr );
+    $c->req->hostname( $ENV{REMOTE_HOST} );
+    $c->req->address( $ENV{REMOTE_ADDR} );
 }
-
-=item $c->prepare_cookies
-
-Sets up cookies.
-
-=cut
-
-sub prepare_cookies { shift->req->cookies( { CGI::Cookie->fetch } ) }
 
 =item $c->prepare_headers
 
@@ -130,13 +97,17 @@ sub prepare_cookies { shift->req->cookies( { CGI::Cookie->fetch } ) }
 
 sub prepare_headers {
     my $c = shift;
-    $c->req->method( $c->cgi->request_method );
-    for my $header ( $c->cgi->http ) {
+
+    while ( my ( $header, $value ) = each %ENV ) {
+
+        next unless $header =~ /^(HTTP|CONTENT)/i;
+
         ( my $field = $header ) =~ s/^HTTPS?_//;
-        $c->req->headers->header( $field => $c->cgi->http($header) );
+
+        $c->req->headers->header( $field => $value );
     }
-    $c->req->headers->header( 'Content-Type'   => $c->cgi->content_type );
-    $c->req->headers->header( 'Content-Length' => $c->cgi->content_length );
+
+    $c->req->method( $ENV{REQUEST_METHOD} || 'GET' );
 }
 
 =item $c->prepare_parameters
@@ -144,13 +115,23 @@ sub prepare_headers {
 =cut
 
 sub prepare_parameters {
-    my $c    = shift;
-    my %vars = $c->cgi->Vars;
-    while ( my ( $key, $value ) = each %vars ) {
-        my @values = split "\0", $value;
-        $vars{$key} = @values <= 1 ? $values[0] : \@values;
+    my $c = shift;
+    
+    my ( @params );
+
+    for my $param ( $c->cgi->url_param ) { 
+        for my $value (  $c->cgi->url_param($param) ) {
+            push ( @params, $param, $value );
+        }
     }
-    $c->req->parameters( {%vars} );
+
+    for my $param ( $c->cgi->param ) { 
+        for my $value (  $c->cgi->param($param) ) {
+            push ( @params, $param, $value );
+        }
+    }
+ 
+    $c->req->_assign_values( $c->req->parameters, \@params );
 }
 
 =item $c->prepare_path
@@ -163,7 +144,7 @@ sub prepare_path {
     my $base;
     {
         my $scheme = $ENV{HTTPS} ? 'https' : 'http';
-        my $host   = $ENV{HTTP_HOST} || $ENV{SERVER_NAME};
+        my $host   = $ENV{HTTP_HOST}   || $ENV{SERVER_NAME};
         my $port   = $ENV{SERVER_PORT} || 80;
         my $path   = $ENV{SCRIPT_NAME} || '/';
 
@@ -177,7 +158,8 @@ sub prepare_path {
     }
 
     my $path = $ENV{PATH_INFO} || '/';
-    $path =~  s/^\///;
+    $path =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
+    $path =~ s/^\///;
 
     $c->req->base($base);
     $c->req->path($path);
@@ -187,7 +169,11 @@ sub prepare_path {
 
 =cut
 
-sub prepare_request { shift->cgi( CGI::Simple->new ) }
+sub prepare_request { 
+    my $c = shift;
+    $c->cgi( CGI->new );
+    $c->cgi->_reset_globals;
+}
 
 =item $c->prepare_uploads
 
@@ -195,15 +181,42 @@ sub prepare_request { shift->cgi( CGI::Simple->new ) }
 
 sub prepare_uploads {
     my $c = shift;
-    for my $name ( $c->cgi->upload ) {
-        next unless defined $name;
-        $c->req->uploads->{$name} = {
-            fh   => $c->cgi->upload($name),
-            size => $c->cgi->upload_info( $name, 'size' ),
-            type => $c->cgi->upload_info( $name, 'mime' )
-        };
+
+    my @uploads;
+    
+    for my $param ( $c->cgi->param ) {
+    
+        my @values = $c->cgi->param($param);
+
+        next unless ref( $values[0] );
+
+        for my $fh (@values) {
+
+            next unless my $size = ( stat $fh )[7];
+
+            my $info        = $c->cgi->uploadInfo($fh);
+            my $tempname    = $c->cgi->tmpFileName($fh);
+            my $type        = $info->{'Content-Type'};
+            my $disposition = $info->{'Content-Disposition'};
+            my $filename    = ( $disposition =~ / filename="([^;]*)"/ )[0];
+
+            my $upload = Catalyst::Request::Upload->new(
+                filename => $filename,
+                size     => $size,
+                tempname => $tempname,
+                type     => $type
+            );
+            
+            push( @uploads, $param, $upload );
+        }
     }
+    
+    $c->req->_assign_values( $c->req->uploads, \@uploads );
 }
+
+=item $c->run
+
+=cut
 
 sub run { shift->handler }
 

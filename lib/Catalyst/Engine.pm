@@ -3,27 +3,29 @@ package Catalyst::Engine;
 use strict;
 use base qw/Class::Data::Inheritable Class::Accessor::Fast/;
 use UNIVERSAL::require;
+use CGI::Cookie;
 use Data::Dumper;
 use HTML::Entities;
 use HTTP::Headers;
 use Time::HiRes qw/gettimeofday tv_interval/;
+use Text::ASCIITable;
 use Catalyst::Request;
+use Catalyst::Request::Upload;
 use Catalyst::Response;
 
 require Module::Pluggable::Fast;
 
+# For pretty dumps
 $Data::Dumper::Terse = 1;
 
-__PACKAGE__->mk_classdata($_) for qw/actions components/;
-__PACKAGE__->mk_accessors(qw/request response/);
-
-__PACKAGE__->actions(
-    { plain => {}, regex => {}, compiled => {}, reverse => {} } );
+__PACKAGE__->mk_classdata('components');
+__PACKAGE__->mk_accessors(qw/request response state/);
 
 *comp = \&component;
 *req  = \&request;
 *res  = \&response;
 
+# For statistics
 our $COUNT = 1;
 our $START = time;
 
@@ -40,89 +42,6 @@ See L<Catalyst>.
 =head1 METHODS
 
 =over 4
-
-=item $c->action( $name => $coderef, ... )
-
-=item $c->action( $name )
-
-=item $c->action
-
-Add one or more actions.
-
-    $c->action( '!foo' => sub { $_[1]->res->output('Foo!') } );
-
-Get an action's class and coderef.
-
-    my ($class, $code) = @{ $c->action('foo') };
-
-Get a list of available actions.
-
-    my @actions = $c->action;
-
-It also automatically calls setup() if needed.
-
-See L<Catalyst::Manual::Intro> for more informations about actions.
-
-=cut
-
-sub action {
-    my $self = shift;
-    $self->setup unless $self->components;
-    $self->actions( {} ) unless $self->actions;
-    my $action;
-    $_[1] ? ( $action = {@_} ) : ( $action = shift );
-    if ( ref $action eq 'HASH' ) {
-        while ( my ( $name, $code ) = each %$action ) {
-            my $class = caller(0);
-            if ( $name =~ /^\/(.*)\/$/ ) {
-                my $regex = $1;
-                $self->actions->{compiled}->{qr/$regex/} = $name;
-                $self->actions->{regex}->{$name} = [ $class, $code ];
-            }
-            elsif ( $name =~ /^\?(.*)$/ ) {
-                $name = $1;
-                $name = _prefix( $class, $name );
-                $self->actions->{plain}->{$name} = [ $class, $code ];
-            }
-            elsif ( $name =~ /^\!\?(.*)$/ ) {
-                $name = $1;
-                $name = _prefix( $class, $name );
-                $name = "\!$name";
-                $self->actions->{plain}->{$name} = [ $class, $code ];
-            }
-            else { $self->actions->{plain}->{$name} = [ $class, $code ] }
-            $self->actions->{reverse}->{"$code"} = $name;
-            $self->log->debug(qq/"$class" defined "$name" as "$code"/)
-              if $self->debug;
-        }
-    }
-    elsif ($action) {
-        if    ( my $p = $self->actions->{plain}->{$action} ) { return [$p] }
-        elsif ( my $r = $self->actions->{regex}->{$action} ) { return [$r] }
-        else {
-            for my $regex ( keys %{ $self->actions->{compiled} } ) {
-                my $name = $self->actions->{compiled}->{$regex};
-                if ( $action =~ $regex ) {
-                    my @snippets;
-                    for my $i ( 1 .. 9 ) {
-                        no strict 'refs';
-                        last unless ${$i};
-                        push @snippets, ${$i};
-                    }
-                    return [ $self->actions->{regex}->{$name},
-                        $name, \@snippets ];
-                }
-            }
-        }
-        return 0;
-    }
-    else {
-        return (
-            keys %{ $self->actions->{plain} },
-            keys %{ $self->actions->{regex} }
-        );
-    }
-}
 
 =item $c->benchmark($coderef)
 
@@ -158,37 +77,81 @@ Regex search for a component.
 
 sub component {
     my ( $c, $name ) = @_;
+
     if ( my $component = $c->components->{$name} ) {
         return $component;
     }
+
     else {
         for my $component ( keys %{ $c->components } ) {
             return $c->components->{$component} if $component =~ /$name/i;
         }
     }
+
 }
 
-=item $c->errors
+=item $c->error
 
-=item $c->errors($error, ...)
+=item $c->error($error, ...)
 
-=item $c->errors($arrayref)
+=item $c->error($arrayref)
 
-Returns an arrayref containing errors messages.
+Returns an arrayref containing error messages.
 
-    my @errors = @{ $c->errors };
+    my @error = @{ $c->error };
 
 Add a new error.
 
-    $c->errors('Something bad happened');
+    $c->error('Something bad happened');
 
 =cut
 
-sub errors {
+sub error {
     my $c = shift;
-    my $errors = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
-    push @{ $c->{errors} }, @$errors;
-    return $c->{errors};
+    my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
+    push @{ $c->{error} }, @$error;
+    return $c->{error};
+}
+
+=item $c->execute($class, $coderef)
+
+Execute a coderef in given class and catch exceptions.
+Errors are available via $c->error.
+
+=cut
+
+sub execute {
+    my ( $c, $class, $code ) = @_;
+    $class = $c->comp($class) || $class;
+    $c->state(0);
+    my $callsub = ( caller(1) )[3];
+
+    eval {
+        if ( $c->debug )
+        {
+            my $action = $c->actions->{reverse}->{"$code"};
+            $action = "/$action" unless $action =~ /\-\>/;
+            $action = "-> $action" if $callsub =~ /forward$/;
+            my ( $elapsed, @state ) =
+              $c->benchmark( $code, $class, $c, @{ $c->req->args } );
+            push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
+            $c->state(@state);
+        }
+        else { $c->state( &$code( $class, $c, @{ $c->req->args } ) ) }
+    };
+
+    if ( my $error = $@ ) {
+
+        unless ( ref $error ) {
+            chomp $error;
+            $error = qq/Caught exception "$error"/;
+        }
+
+        $c->log->error($error);
+        $c->error($error);
+        $c->state(0);
+    }
+    return $c->state;
 }
 
 =item $c->finalize
@@ -200,24 +163,76 @@ Finalize request.
 sub finalize {
     my $c = shift;
 
-    if ( my $location = $c->res->redirect ) {
+    $c->finalize_cookies;
+
+    if ( my $location = $c->response->redirect ) {
         $c->log->debug(qq/Redirecting to "$location"/) if $c->debug;
-        $c->res->headers->header( Location => $location );
-        $c->res->status(302);
+        $c->response->header( Location => $location );
+        $c->response->status(302) if $c->response->status !~ /^3\d\d$/;
     }
 
-    if ( !$c->res->output || $#{ $c->errors } >= 0 ) {
-        $c->res->headers->content_type('text/html');
-        my $name = $c->config->{name} || 'Catalyst Application';
-        my ( $title, $errors, $infos );
-        if ( $c->debug ) {
-            $errors = join '<br/>', @{ $c->errors };
-            $errors ||= 'No output';
-            $title = $name = "$name on Catalyst $Catalyst::VERSION";
-            my $req   = encode_entities Dumper $c->req;
-            my $res   = encode_entities Dumper $c->res;
-            my $stash = encode_entities Dumper $c->stash;
-            $infos = <<"";
+    if ( $#{ $c->error } >= 0 ) {
+        $c->finalize_error;
+    }
+
+    if ( !$c->response->output && $c->response->status !~ /^(1|3)\d\d$/ ) {
+        $c->finalize_error;
+    }
+
+    if ( $c->response->output && !$c->response->content_length ) {
+        use bytes;    # play safe with a utf8 aware perl
+        $c->response->content_length( length $c->response->output );
+    }
+
+    my $status = $c->finalize_headers;
+    $c->finalize_output;
+    return $status;
+}
+
+=item $c->finalize_cookies
+
+Finalize cookies.
+
+=cut
+
+sub finalize_cookies {
+    my $c = shift;
+
+    while ( my ( $name, $cookie ) = each %{ $c->response->cookies } ) {
+        my $cookie = CGI::Cookie->new(
+            -name    => $name,
+            -value   => $cookie->{value},
+            -expires => $cookie->{expires},
+            -domain  => $cookie->{domain},
+            -path    => $cookie->{path},
+            -secure  => $cookie->{secure} || 0
+        );
+
+        $c->res->headers->push_header( 'Set-Cookie' => $cookie->as_string );
+    }
+}
+
+=item $c->finalize_error
+
+Finalize error.
+
+=cut
+
+sub finalize_error {
+    my $c = shift;
+
+    $c->res->headers->content_type('text/html');
+    my $name = $c->config->{name} || 'Catalyst Application';
+
+    my ( $title, $error, $infos );
+    if ( $c->debug ) {
+        $error = join '<br/>', @{ $c->error };
+        $error ||= 'No output';
+        $title = $name = "$name on Catalyst $Catalyst::VERSION";
+        my $req   = encode_entities Dumper $c->req;
+        my $res   = encode_entities Dumper $c->res;
+        my $stash = encode_entities Dumper $c->stash;
+        $infos = <<"";
 <br/>
 <b><u>Request</u></b><br/>
 <pre>$req</pre>
@@ -226,11 +241,11 @@ sub finalize {
 <b><u>Stash</u></b><br/>
 <pre>$stash</pre>
 
-        }
-        else {
-            $title  = $name;
-            $errors = '';
-            $infos  = <<"";
+    }
+    else {
+        $title = $name;
+        $error = '';
+        $infos = <<"";
 <pre>
 (en) Please come back later
 (de) Bitte versuchen sie es spaeter nocheinmal
@@ -242,67 +257,62 @@ sub finalize {
 (it) Ritornato prego più successivamente
 </pre>
 
-            $name = '';
-        }
-        $c->res->{output} = <<"";
+        $name = '';
+    }
+    $c->res->output( <<"" );
 <html>
-    <head>
-        <title>$title</title>
-        <style type="text/css">
-            body {
-                font-family: "Bitstream Vera Sans", "Trebuchet MS", Verdana,
-                             Tahoma, Arial, helvetica, sans-serif;
-                color: #ddd;
-                background-color: #eee;
-                margin: 0px;
-                padding: 0px;
-            }
-            div.box {
-                background-color: #ccc;
-                border: 1px solid #aaa;
-                padding: 4px;
-                margin: 10px;
-                -moz-border-radius: 10px;
-            }
-            div.errors {
-                background-color: #977;
-                border: 1px solid #755;
-                padding: 8px;
-                margin: 4px;
-                margin-bottom: 10px;
-                -moz-border-radius: 10px;
-            }
-            div.infos {
-                background-color: #797;
-                border: 1px solid #575;
-                padding: 8px;
-                margin: 4px;
-                margin-bottom: 10px;
-                -moz-border-radius: 10px;
-            }
-            div.name {
-                background-color: #779;
-                border: 1px solid #557;
-                padding: 8px;
-                margin: 4px;
-                -moz-border-radius: 10px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <div class="errors">$errors</div>
-            <div class="infos">$infos</div>
-            <div class="name">$name</div>
-        </div>
-    </body>
+<head>
+    <title>$title</title>
+    <style type="text/css">
+        body {
+            font-family: "Bitstream Vera Sans", "Trebuchet MS", Verdana,
+                         Tahoma, Arial, helvetica, sans-serif;
+            color: #ddd;
+            background-color: #eee;
+            margin: 0px;
+            padding: 0px;
+        }
+        div.box {
+            background-color: #ccc;
+            border: 1px solid #aaa;
+            padding: 4px;
+            margin: 10px;
+            -moz-border-radius: 10px;
+        }
+        div.error {
+            background-color: #977;
+            border: 1px solid #755;
+            padding: 8px;
+            margin: 4px;
+            margin-bottom: 10px;
+            -moz-border-radius: 10px;
+        }
+        div.infos {
+            background-color: #797;
+            border: 1px solid #575;
+            padding: 8px;
+            margin: 4px;
+            margin-bottom: 10px;
+            -moz-border-radius: 10px;
+        }
+        div.name {
+            background-color: #779;
+            border: 1px solid #557;
+            padding: 8px;
+            margin: 4px;
+            -moz-border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="error">$error</div>
+        <div class="infos">$infos</div>
+        <div class="name">$name</div>
+    </div>
+</body>
 </html>
 
-    }
-    $c->res->headers->content_length( length $c->res->output );
-    my $status = $c->finalize_headers;
-    $c->finalize_output;
-    return $status;
 }
 
 =item $c->finalize_headers
@@ -321,147 +331,64 @@ Finalize output.
 
 sub finalize_output { }
 
-=item $c->forward($command)
-
-Forward processing to a private/public action or a method from a class.
-If you define a class without method it will default to process().
-
-    $c->forward('!foo');
-    $c->forward('index.html');
-    $c->forward(qw/MyApp::Model::CDBI::Foo do_stuff/);
-    $c->forward('MyApp::View::TT');
-
-=cut
-
-sub forward {
-    my $c       = shift;
-    my $command = shift;
-    unless ($command) {
-        $c->log->debug('Nothing to forward to') if $c->debug;
-        return 0;
-    }
-    if ( $command =~ /^\?(.*)$/ ) {
-        $command = $1;
-        my $caller = caller(0);
-        $command = _prefix( $caller, $command );
-    }
-    elsif ( $command =~ /^\!\?(.*)$/ ) {
-        $command = $1;
-        my $caller = caller(0);
-        $command = _prefix( $caller, $command );
-        $command = "\!$command";
-    }
-    elsif ( $command =~ /^\!(.*)$/ ) {
-        my $try    = $1;
-        my $caller = caller(0);
-        my $prefix = _class2prefix($caller);
-        $try = "!$prefix/$command";
-        $command = $try if $c->actions->{plain}->{$try};
-    }
-    my ( $class, $code );
-    if ( my $action = $c->action($command) ) {
-        if ( $action->[2] ) {
-            $c->log->debug(qq/Couldn't forward "$command" to regex action/)
-              if $c->debug;
-            return 0;
-        }
-        ( $class, $code ) = @{ $action->[0] };
-    }
-    else {
-        $class = $command;
-        if ( $class =~ /[^\w\:]/ ) {
-            $c->log->debug(qq/Couldn't forward to "$class"/) if $c->debug;
-            return 0;
-        }
-        my $method = shift || 'process';
-        if ( $code = $class->can($method) ) {
-            $c->actions->{reverse}->{"$code"} = "$class->$method";
-        }
-        else {
-            $c->log->debug(qq/Couldn't forward to "$class->$method"/)
-              if $c->debug;
-            return 0;
-        }
-    }
-    $class = $c->components->{$class} || $class;
-    return $c->process( $class, $code );
-}
-
-=item $c->handler($r)
+=item $c->handler( $class, $r )
 
 Handles the request.
 
 =cut
 
 sub handler {
-    my ( $class, $r ) = @_;
+    my ( $class, $engine ) = @_;
 
     # Always expect worst case!
     my $status = -1;
     eval {
+        my @stats = ();
+
         my $handler = sub {
-            my $c = $class->prepare($r);
-            if ( my $action = $c->action( $c->req->action ) ) {
-                my ( $begin, $end );
-                my $class  = ${ $action->[0] }[0];
-                my $prefix = _class2prefix($class);
-                if ($prefix) {
-                    if ( $c->actions->{plain}->{"\!$prefix/begin"} ) {
-                        $begin = "\!$prefix/begin";
-                    }
-                    elsif ( $c->actions->{plain}->{'!begin'} ) {
-                        $begin = '!begin';
-                    }
-                    if ( $c->actions->{plain}->{"\!$prefix/end"} ) {
-                        $end = "\!$prefix/end";
-                    }
-                    elsif ( $c->actions->{plain}->{'!end'} ) { $end = '!end' }
-                }
-                else {
-                    if ( $c->actions->{plain}->{'!begin'} ) {
-                        $begin = '!begin';
-                    }
-                    if ( $c->actions->{plain}->{'!end'} ) { $end = '!end' }
-                }
-                $c->forward($begin)            if $begin;
-                $c->forward( $c->req->action ) if $c->req->action;
-                $c->forward($end)              if $end;
-            }
-            else {
-                my $action = $c->req->path;
-                my $error  = $action
-                  ? qq/Unknown resource "$action"/
-                  : "No default action defined";
-                $c->log->error($error) if $c->debug;
-                $c->errors($error);
-            }
+            my $c = $class->prepare($engine);
+            $c->{stats} = \@stats;
+            $c->dispatch;
             return $c->finalize;
         };
+
         if ( $class->debug ) {
             my $elapsed;
             ( $elapsed, $status ) = $class->benchmark($handler);
             $elapsed = sprintf '%f', $elapsed;
             my $av = sprintf '%.3f', 1 / $elapsed;
-            $class->log->info( "Request took $elapsed" . "s ($av/s)" );
+            my $t = Text::ASCIITable->new;
+            $t->setCols( 'Action', 'Time' );
+            $t->setColWidth( 'Action', 64, 1 );
+            $t->setColWidth( 'Time',   9,  1 );
+
+            for my $stat (@stats) { $t->addRow( $stat->[0], $stat->[1] ) }
+            $class->log->info( "Request took $elapsed" . "s ($av/s)",
+                $t->draw );
         }
         else { $status = &$handler }
+
     };
+
     if ( my $error = $@ ) {
         chomp $error;
         $class->log->error(qq/Caught exception in engine "$error"/);
     }
+
     $COUNT++;
     return $status;
 }
 
 =item $c->prepare($r)
 
-Turns the engine-specific request (Apache, CGI...) into a Catalyst context.
+Turns the engine-specific request( Apache, CGI ... )
+into a Catalyst context .
 
 =cut
 
 sub prepare {
     my ( $class, $r ) = @_;
+
     my $c = bless {
         request => Catalyst::Request->new(
             {
@@ -476,38 +403,47 @@ sub prepare {
         response => Catalyst::Response->new(
             { cookies => {}, headers => HTTP::Headers->new, status => 200 }
         ),
-        stash => {}
+        stash => {},
+        state => 0
     }, $class;
+
     if ( $c->debug ) {
         my $secs = time - $START || 1;
         my $av = sprintf '%.3f', $COUNT / $secs;
-        $c->log->debug('********************************');
+        $c->log->debug('**********************************');
         $c->log->debug("* Request $COUNT ($av/s) [$$]");
-        $c->log->debug('********************************');
+        $c->log->debug('**********************************');
         $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION );
     }
+
     $c->prepare_request($r);
     $c->prepare_path;
-    $c->prepare_cookies;
     $c->prepare_headers;
+    $c->prepare_cookies;
     $c->prepare_connection;
+
     my $method   = $c->req->method   || '';
     my $path     = $c->req->path     || '';
     my $hostname = $c->req->hostname || '';
     my $address  = $c->req->address  || '';
     $c->log->debug(qq/"$method" request for "$path" from $hostname($address)/)
       if $c->debug;
+
     $c->prepare_action;
     $c->prepare_parameters;
 
     if ( $c->debug && keys %{ $c->req->params } ) {
-        my @params;
+        my $t = Text::ASCIITable->new;
+        $t->setCols( 'Key', 'Value' );
+        $t->setColWidth( 'Key',   37, 1 );
+        $t->setColWidth( 'Value', 36, 1 );
         for my $key ( keys %{ $c->req->params } ) {
             my $value = $c->req->params->{$key} || '';
-            push @params, "$key=$value";
+            $t->addRow( $key, $value );
         }
-        $c->log->debug( 'Parameters are "' . join( ' ', @params ) . '"' );
+        $c->log->debug( 'Parameters are', $t->draw );
     }
+
     $c->prepare_uploads;
     return $c;
 }
@@ -523,15 +459,17 @@ sub prepare_action {
     my $path = $c->req->path;
     my @path = split /\//, $c->req->path;
     $c->req->args( \my @args );
+
     while (@path) {
         $path = join '/', @path;
-        if ( my $result = $c->action($path) ) {
+        if ( my $result = ${ $c->get_action($path) }[0] ) {
 
             # It's a regex
             if ($#$result) {
                 my $match    = $result->[1];
                 my @snippets = @{ $result->[2] };
-                $c->log->debug(qq/Requested action "$path" matched "$match"/)
+                $c->log->debug(
+                    qq/Requested action is "$path" and matched "$match"/)
                   if $c->debug;
                 $c->log->debug(
                     'Snippets are "' . join( ' ', @snippets ) . '"' )
@@ -539,33 +477,28 @@ sub prepare_action {
                 $c->req->action($match);
                 $c->req->snippets( \@snippets );
             }
+
             else {
                 $c->req->action($path);
-                $c->log->debug(qq/Requested action "$path"/) if $c->debug;
+                $c->log->debug(qq/Requested action is "$path"/) if $c->debug;
             }
+
             $c->req->match($path);
             last;
         }
         unshift @args, pop @path;
     }
+
     unless ( $c->req->action ) {
-        my $prefix = $c->req->args->[0];
-        if ( $prefix && $c->actions->{plain}->{"\!$prefix/default"} ) {
-            $c->req->match('');
-            $c->req->action("\!$prefix/default");
-            $c->log->debug('Using prefixed default action') if $c->debug;
-        }
-        elsif ( $c->actions->{plain}->{'!default'} ) {
-            $c->req->match('');
-            $c->req->action('!default');
-            $c->log->debug('Using default action') if $c->debug;
-        }
+        $c->req->action('default');
+        $c->req->match('');
     }
+
     $c->log->debug( 'Arguments are "' . join( '/', @args ) . '"' )
       if ( $c->debug && @args );
 }
 
-=item $c->prepare_connection;
+=item $c->prepare_connection
 
 Prepare connection.
 
@@ -573,13 +506,19 @@ Prepare connection.
 
 sub prepare_connection { }
 
-=item $c->prepare_cookies;
+=item $c->prepare_cookies
 
 Prepare cookies.
 
 =cut
 
-sub prepare_cookies { }
+sub prepare_cookies {
+    my $c = shift;
+
+    if ( my $header = $c->request->header('Cookie') ) {
+        $c->req->cookies( { CGI::Cookie->parse($header) } );
+    }
+}
 
 =item $c->prepare_headers
 
@@ -621,60 +560,13 @@ Prepare uploads.
 
 sub prepare_uploads { }
 
-=item $c->process($class, $coderef)
+=item $c->run
 
-Process a coderef in given class and catch exceptions.
-Errors are available via $c->errors.
-
-=cut
-
-sub process {
-    my ( $c, $class, $code ) = @_;
-    my $status;
-    eval {
-        if ( $c->debug )
-        {
-            my $action = $c->actions->{reverse}->{"$code"} || "$code";
-            my $elapsed;
-            ( $elapsed, $status ) =
-              $c->benchmark( $code, $class, $c, @{ $c->req->args } );
-            $c->log->info( sprintf qq/Processing "$action" took %fs/, $elapsed )
-              if $c->debug;
-        }
-        else { $status = &$code( $class, $c, @{ $c->req->args } ) }
-    };
-    if ( my $error = $@ ) {
-        chomp $error;
-        $error = qq/Caught exception "$error"/;
-        $c->log->error($error);
-        $c->errors($error) if $c->debug;
-        return 0;
-    }
-    return $status;
-}
-
-=item $c->remove_action($action)
-
-Remove an action.
-
-    $c->remove_action('!foo');
+Starts the engine.
 
 =cut
 
-sub remove_action {
-    my ( $self, $action ) = @_;
-    if ( delete $self->actions->{regex}->{$action} ) {
-        while ( my ( $regex, $name ) = each %{ $self->actions->{compiled} } ) {
-            if ( $name eq $action ) {
-                delete $self->actions->{compiled}->{$regex};
-                last;
-            }
-        }
-    }
-    else {
-        delete $self->actions->{plain}->{$action};
-    }
-}
+sub run { }
 
 =item $c->request
 
@@ -732,18 +624,29 @@ sub setup_components {
 
     if ( my $error = $@ ) {
         chomp $error;
-        $self->log->error(
-            qq/Couldn't initialize "Module::Pluggable::Fast", "$error"/);
+        die qq/Couldn't load components "$error"/;
     }
+
     $self->components( {} );
-    for my $component ( $self->_components($self) ) {
-        $self->components->{ ref $component } = $component;
+    my @comps;
+    for my $comp ( $self->_components($self) ) {
+        $self->components->{ ref $comp } = $comp;
+        push @comps, $comp;
     }
-    $self->log->debug( 'Initialized components "'
-          . join( ' ', keys %{ $self->components } )
-          . '"' )
-      if $self->debug;
+
+    my $t = Text::ASCIITable->new( { hide_HeadRow => 1, hide_HeadLine => 1 } );
+    $t->setCols('Class');
+    $t->setColWidth( 'Class', 75, 1 );
+    $t->addRow($_) for keys %{ $self->components };
+    $self->log->debug( 'Loaded components', $t->draw )
+      if ( @{ $t->{tbl_rows} } && $self->debug );
+
+    $self->setup_actions( [ $self, @comps ] );
 }
+
+=item $c->state
+
+Contains the return value of the last executed action.
 
 =item $c->stash
 
@@ -763,21 +666,6 @@ sub stash {
         }
     }
     return $self->{stash};
-}
-
-sub _prefix {
-    my ( $class, $name ) = @_;
-    my $prefix = _class2prefix($class);
-    $name = "$prefix/$name" if $prefix;
-    return $name;
-}
-
-sub _class2prefix {
-    my $class = shift;
-    $class =~ /^.*::[(M)(Model)(V)(View)(C)(Controller)]+::(.*)$/;
-    my $prefix = lc $1 || '';
-    $prefix =~ s/\:\:/_/g;
-    return $prefix;
 }
 
 =back

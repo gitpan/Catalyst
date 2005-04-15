@@ -1,12 +1,26 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.00  Fri Apr 15 18:00:00 2005
+        - new core to support inheritance trees
+        - new syntax for action declaration
+        - new helper system using TT2
+        - problems with mod_perl2 fixed
+        - added Test::Pod support
+        - added new server backend with HTTP/1.1 support
+        - added option to run tests against a remote server
+        - renamed errors() to error()
+        - more better docs
+        - countless minor improvements
+          IMPORTANT: This release is very incompatible to previous ones
+          and you have to regenerate the helper scripts again...
+
 4.34  Wed Mar 23 07:00:00 2005
         - added some messages to Makefile.PL
         - added Catalyst::Engine::Test
         - added Catalyst::Engine::CGI::NPH
         - simplified Catalyst::Log to be easier to implement/subclass
         - added cgi.pl
-        - updated Catalyst::Log to use Catalyst::Engine::Test
+        - updated Catalyst::Test to use Catalyst::Engine::Test
         - updated helper scripts
           IMPORTANT: this will be the last time you'll have to regenerate
           the script directory. We promise!

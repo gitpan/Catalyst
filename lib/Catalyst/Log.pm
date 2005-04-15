@@ -22,8 +22,10 @@ See L<Catalyst>.
 
 =head1 DESCRIPTION
 
-This module provides the default, simple logging functionality for Catalyst.
-If you want something different set C<$c->log> in your application module, e.g.:
+This module provides the default, simple logging functionality for 
+Catalyst.
+If you want something different set C<$c->log> in your application 
+module, e.g.:
 
     $c->log( MyLogger->new );
 
@@ -41,8 +43,6 @@ Logs a debugging message.
 =cut
 
 sub debug { shift->_format( 'debug', @_ ) }
-
-sub dump { shift->_format( 'dump', Dumper( $_[1] ) ) }
 
 =item $log->error(@message)
 
@@ -78,6 +78,12 @@ sub _format {
 
 =back
 
+=cut
+
+# Private - Logs a Data::Dumper of reference.
+sub _dump { shift->_format( 'dump', Dumper( $_[0] ) ) }
+
+
 =head1 SEE ALSO
 
 L<Catalyst>.
@@ -85,11 +91,12 @@ L<Catalyst>.
 =head1 AUTHOR
 
 Sebastian Riedel, C<sri@cpan.org>
+Marcus Ramberg, C<mramberg@cpan.org>
 
 =head1 COPYRIGHT
 
-This program is free software, you can redistribute it and/or modify it under
-the same terms as Perl itself.
+This program is free software, you can redistribute it and/or modify 
+it under the same terms as Perl itself.
 
 =cut
 

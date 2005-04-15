@@ -19,6 +19,9 @@ Catalyst::Test - Test Catalyst applications
     request('index.html');
     get('index.html');
 
+    # Run tests against a remote server
+    CATALYST_SERVER='http://localhost:3000/' prove -l lib/ t/
+
     # Tests with inline apps need to use Catalyst::Engine::Test
     package TestApp;
 
@@ -38,20 +41,21 @@ Catalyst::Test - Test Catalyst applications
 
     ok( get('/foo') =~ /bar/ );
 
-
 =head1 DESCRIPTION
 
 Test Catalyst applications.
 
 =head2 METHODS
 
-=head3 get
+=over 4
+
+=item get
 
 Returns the content.
 
     my $content = get('foo/bar?test=1');
 
-=head3 request
+=item request
 
 Returns a C<HTTP::Response> object.
 
@@ -60,19 +64,86 @@ Returns a C<HTTP::Response> object.
 =cut
 
 sub import {
-    my $self = shift;
-    if ( my $class = shift ) {
-        $class->require;
-        unless ( $INC{'Test/Builder.pm'} ) {
-            die qq/Couldn't load "$class", "$@"/ if $@;
-        }
+    my $self  = shift;
+    my $class = shift;
 
-        no strict 'refs';
-        my $caller = caller(0);
-        *{"$caller\::request"} = sub { $class->run(@_) };
-        *{"$caller\::get"}     = sub { $class->run(@_)->content };
+    my ( $get, $request );
+
+    if ( $ENV{CATALYST_SERVER} ) {
+        $request = sub { remote_request(@_) };
+        $get     = sub { remote_request(@_)->content };
     }
+
+    else {
+        $class->require;
+        my $error = $UNIVERSAL::require::ERROR;
+        die qq/Couldn't load "$class", "$error"/ if $@;
+
+        $class->import;
+
+        $request = sub { $class->run(@_) };
+        $get     = sub { $class->run(@_)->content };
+    }
+
+    no strict 'refs';
+    my $caller = caller(0);
+    *{"$caller\::request"} = $request;
+    *{"$caller\::get"}     = $get;
 }
+
+my $agent;
+
+=item remote_request
+
+Do an actual remote rquest using LWP.
+
+=cut
+
+sub remote_request {
+    my $request = shift;
+
+    require LWP::UserAgent;
+
+    unless ( ref $request ) {
+
+        my $uri =
+          ( $request =~ m/http/i )
+          ? URI->new($request)
+          : URI->new( 'http://localhost' . $request );
+
+        $request = $uri->canonical;
+    }
+
+    unless ( ref $request eq 'HTTP::Request' ) {
+        $request = HTTP::Request->new( 'GET', $request );
+    }
+
+    my $server = URI->new( $ENV{CATALYST_SERVER} );
+
+    if ( $server->path =~ m|^(.+)?/$| ) {
+        $server->path("$1");    # need to be quoted
+    }
+
+    $request->uri->scheme( $server->scheme );
+    $request->uri->host( $server->host );
+    $request->uri->port( $server->port );
+    $request->uri->path( $server->path . $request->uri->path );
+
+    unless ($agent) {
+        $agent = LWP::UserAgent->new(
+
+            #  cookie_jar   => {},
+            keep_alive   => 1,
+            max_redirect => 0,
+            timeout      => 60,
+        );
+        $agent->env_proxy;
+    }
+
+    return $agent->request($request);
+}
+
+=back 
 
 =head1 SEE ALSO
 

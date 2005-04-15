@@ -1,13 +1,15 @@
 package Catalyst;
 
 use strict;
-use base 'Class::Data::Inheritable';
+use base 'Catalyst::Base';
 use UNIVERSAL::require;
 use Catalyst::Log;
+use Catalyst::Helper;
+use Text::ASCIITable;
 
-__PACKAGE__->mk_classdata($_) for qw/_config engine log/;
+__PACKAGE__->mk_classdata($_) for qw/dispatcher engine log/;
 
-our $VERSION = '4.34';
+our $VERSION = '5.00';
 our @ISA;
 
 =head1 NAME
@@ -40,23 +42,19 @@ Catalyst - The Elegant MVC Web Application Framework
 
     use Catalyst qw/-Debug -Engine=CGI/;
 
-    __PACKAGE__->action( '!default' => sub { $_[1]->res->output('Hello') } );
+    sub default : Private { $_[1]->res->output('Hello') } );
 
-    __PACKAGE__->action(
-        'index.html' => sub {
-            my ( $self, $c ) = @_;
-            $c->res->output('Hello');
-            $c->forward('_foo');
-        }
-    );
+    sub index : Path('/index.html') {
+        my ( $self, $c ) = @_;
+        $c->res->output('Hello');
+        $c->forward('_foo');
+    }
 
-    __PACKAGE__->action(
-        '/^product[_]*(\d*).html$/' => sub {
-            my ( $self, $c ) = @_;
-            $c->stash->{template} = 'product.tt';
-            $c->stash->{product} = $c->req->snippets->[0];
-        }
-    );
+    sub product : Regex('/^product[_]*(\d*).html$/') {
+        my ( $self, $c ) = @_;
+        $c->stash->{template} = 'product.tt';
+        $c->stash->{product} = $c->req->snippets->[0];
+    }
 
 See also L<Catalyst::Manual::Intro>
 
@@ -70,7 +68,7 @@ The key concept of Catalyst is DRY (Don't Repeat Yourself).
 See L<Catalyst::Manual> for more documentation.
 
 Catalyst plugins can be loaded by naming them as arguments to the "use Catalyst" statement.
-Omit the C<Catalyst::Plugin::> prefix from the plugin name, 
+Omit the C<Catalyst::Plugin::> prefix from the plugin name,
 so C<Catalyst::Plugin::My::Module> becomes C<My::Module>.
 
     use Catalyst 'My::Module';
@@ -125,63 +123,98 @@ Returns a hashref containing your applications settings.
 
 =cut
 
-sub config {
-    my $self = shift;
-    $self->_config( {} ) unless $self->_config;
-    if ( $_[0] ) {
-        my $config = $_[1] ? {@_} : $_[0];
-        while ( my ( $key, $val ) = each %$config ) {
-            $self->_config->{$key} = $val;
-        }
-    }
-    return $self->_config;
-}
-
 sub import {
     my ( $self, @options ) = @_;
     my $caller = caller(0);
 
+    # Prepare inheritance
     unless ( $caller->isa($self) ) {
         no strict 'refs';
         push @{"$caller\::ISA"}, $self;
+    }
+
+    if ( $caller->engine ) {
+        return;    # Catalyst is already initialized
     }
 
     unless ( $caller->log ) {
         $caller->log( Catalyst::Log->new );
     }
 
-    # Options
-    my $engine =
-      $ENV{MOD_PERL} ? 'Catalyst::Engine::Apache' : 'Catalyst::Engine::CGI';
+    # Debug?
+    if ( $ENV{CATALYST_DEBUG} || $ENV{ uc($caller) . '_DEBUG' } ) {
+        no strict 'refs';
+        *{"$caller\::debug"} = sub { 1 };
+        $caller->log->debug('Debug messages enabled');
+    }
+
+    my $engine     = 'Catalyst::Engine::CGI';
+    my $dispatcher = 'Catalyst::Dispatcher';
+
+    # Detect mod_perl
+    if ( $ENV{MOD_PERL} ) {
+
+        require mod_perl;
+
+        if ( $mod_perl::VERSION >= 1.99 ) {
+            $engine = 'Catalyst::Engine::Apache::MP19';
+        }
+        else {
+            $engine = 'Catalyst::Engine::Apache::MP13';
+        }
+    }
+
+    $caller->log->info("You are running an old helper script! ".
+             "Please update your scripts by regenerating the ".
+             "application and copying over the new scripts.")
+        if ( $ENV{CATALYST_SCRIPT_GEN} && ( 
+             $ENV{CATALYST_SCRIPT_GEN} < 
+             $Catalyst::Helper::CATALYST_SCRIPT_GEN )) ;
+    # Process options
+    my @plugins;
     foreach (@options) {
+
         if (/^\-Debug$/) {
-            no warnings;
+            next if $caller->debug;
             no strict 'refs';
             *{"$caller\::debug"} = sub { 1 };
             $caller->log->debug('Debug messages enabled');
         }
+
+        elsif (/^-Dispatcher=(.*)$/) {
+            $dispatcher = "Catalyst::Dispatcher::$1";
+        }
+
         elsif (/^-Engine=(.*)$/) { $engine = "Catalyst::Engine::$1" }
         elsif (/^-.*$/) { $caller->log->error(qq/Unknown flag "$_"/) }
+
         else {
             my $plugin = "Catalyst::Plugin::$_";
 
-            # Plugin caller should be our application class
-            eval "package $caller; require $plugin";
-            if ($@) {
-                $caller->log->error(qq/Couldn't load plugin "$plugin", "$@"/);
-            }
+            $plugin->require;
+
+            if ($@) { die qq/Couldn't load plugin "$plugin", "$@"/ }
             else {
-                $caller->log->debug(qq/Loaded plugin "$plugin"/)
-                  if $caller->debug;
+                push @plugins, $plugin;
                 no strict 'refs';
                 push @{"$caller\::ISA"}, $plugin;
             }
         }
+
     }
+
+    # Plugin table
+    my $t = Text::ASCIITable->new( { hide_HeadRow => 1, hide_HeadLine => 1 } );
+    $t->setCols('Class');
+    $t->setColWidth( 'Class', 75, 1 );
+    $t->addRow($_) for @plugins;
+    $caller->log->debug( 'Loaded plugins', $t->draw )
+      if ( @plugins && $caller->debug );
 
     # Engine
     $engine = "Catalyst::Engine::$ENV{CATALYST_ENGINE}"
       if $ENV{CATALYST_ENGINE};
+
     $engine->require;
     die qq/Couldn't load engine "$engine", "$@"/ if $@;
     {
@@ -190,6 +223,20 @@ sub import {
     }
     $caller->engine($engine);
     $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
+
+    # Dispatcher
+    $dispatcher = "Catalyst::Dispatcher::$ENV{CATALYST_DISPATCHER}"
+      if $ENV{CATALYST_DISPATCHER};
+
+    $dispatcher->require;
+    die qq/Couldn't load dispatcher "$dispatcher", "$@"/ if $@;
+    {
+        no strict 'refs';
+        push @{"$caller\::ISA"}, $dispatcher;
+    }
+    $caller->dispatcher($dispatcher);
+    $caller->log->debug(qq/Loaded dispatcher "$dispatcher"/) if $caller->debug;
+
 }
 
 =item $c->engine
@@ -210,6 +257,13 @@ man page.
 
 =back
 
+=head1 LIMITATIONS
+
+FCGI and mod_perl2 support are considered experimental and may contain bugs.
+
+You may encounter problems accessing the built in test server on public ip
+addresses on the internet, thats because of a bug in HTTP::Daemon.
+
 =head1 SUPPORT
 
 IRC:
@@ -220,11 +274,24 @@ Mailing-Lists:
 
     http://lists.rawmode.org/mailman/listinfo/catalyst
     http://lists.rawmode.org/mailman/listinfo/catalyst-dev
-    
+
 =head1 SEE ALSO
 
-L<Catalyst::Manual>, L<Catalyst::Test>, L<Catalyst::Request>,
-L<Catalyst::Response>, L<Catalyst::Engine>
+=over 4
+
+=item L<Catalyst::Manual> - The Catalyst Manual
+
+=item L<Catalyst::Engine> - Core Engine
+
+=item L<Catalyst::Log> - The Log Class.
+
+=item L<Catalyst::Request> - The Request Object
+
+=item L<Catalyst::Response> - The Response Object
+
+=item L<Catalyst::Test> - The test suite.
+
+=back
 
 =head1 AUTHOR
 
@@ -232,10 +299,10 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 THANK YOU
 
-Andrew Ford, Andrew Ruthven, Christian Hansen, Christopher Hicks,
-Dan Sully, Danijel Milicevic, David Naughton, Gary Ashton Jones,
-Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg, Tatsuhiko Miyagawa
-and all the others who've helped.
+Andy Grundman, Andrew Ford, Andrew Ruthven, Christian Hansen,
+Christopher Hicks, Dan Sully, Danijel Milicevic, David Naughton,
+Gary Ashton Jones, Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg,
+Tatsuhiko Miyagawa and all the others who've helped.
 
 =head1 LICENSE
 
