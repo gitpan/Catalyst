@@ -2,6 +2,7 @@ package Catalyst::Engine;
 
 use strict;
 use base qw/Class::Data::Inheritable Class::Accessor::Fast/;
+use attributes ();
 use UNIVERSAL::require;
 use CGI::Cookie;
 use Data::Dumper;
@@ -24,6 +25,9 @@ __PACKAGE__->mk_accessors(qw/request response state/);
 *comp = \&component;
 *req  = \&request;
 *res  = \&response;
+
+# For backwards compatibility
+*finalize_output = \&finalize_body;
 
 # For statistics
 our $COUNT = 1;
@@ -175,19 +179,31 @@ sub finalize {
         $c->finalize_error;
     }
 
-    if ( !$c->response->output && $c->response->status !~ /^(1|3)\d\d$/ ) {
+    if ( !$c->response->body && $c->response->status !~ /^(1|3)\d\d$/ ) {
         $c->finalize_error;
     }
 
-    if ( $c->response->output && !$c->response->content_length ) {
+    if ( $c->response->body && !$c->response->content_length ) {
         use bytes;    # play safe with a utf8 aware perl
-        $c->response->content_length( length $c->response->output );
+        $c->response->content_length( length $c->response->body );
     }
 
     my $status = $c->finalize_headers;
-    $c->finalize_output;
+    $c->finalize_body;
     return $status;
 }
+
+=item $c->finalize_output
+
+alias to finalize_body
+
+=item $c->finalize_body
+
+Finalize body.
+
+=cut
+
+sub finalize_body { }
 
 =item $c->finalize_cookies
 
@@ -259,7 +275,7 @@ sub finalize_error {
 
         $name = '';
     }
-    $c->res->output( <<"" );
+    $c->res->body( <<"" );
 <html>
 <head>
     <title>$title</title>
@@ -323,15 +339,7 @@ Finalize headers.
 
 sub finalize_headers { }
 
-=item $c->finalize_output
-
-Finalize output.
-
-=cut
-
-sub finalize_output { }
-
-=item $c->handler( $class, $r )
+=item $c->handler( $class, $engine )
 
 Handles the request.
 
@@ -387,7 +395,7 @@ into a Catalyst context .
 =cut
 
 sub prepare {
-    my ( $class, $r ) = @_;
+    my ( $class, $engine ) = @_;
 
     my $c = bless {
         request => Catalyst::Request->new(
@@ -416,21 +424,38 @@ sub prepare {
         $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION );
     }
 
-    $c->prepare_request($r);
+    $c->prepare_request($engine);
     $c->prepare_path;
     $c->prepare_headers;
     $c->prepare_cookies;
     $c->prepare_connection;
+    $c->prepare_action;
 
     my $method   = $c->req->method   || '';
     my $path     = $c->req->path     || '';
     my $hostname = $c->req->hostname || '';
     my $address  = $c->req->address  || '';
+
     $c->log->debug(qq/"$method" request for "$path" from $hostname($address)/)
       if $c->debug;
 
-    $c->prepare_action;
-    $c->prepare_parameters;
+    if ( $c->request->method eq 'POST' and $c->request->content_length ) {
+
+        if ( $c->req->content_type eq 'application/x-www-form-urlencoded' ) {
+            $c->prepare_parameters;
+        }
+        elsif ( $c->req->content_type eq 'multipart/form-data' ) {
+            $c->prepare_parameters;
+            $c->prepare_uploads;
+        }
+        else {
+            $c->prepare_body;
+        }
+    }
+
+    if ( $c->request->method eq 'GET' ) {
+        $c->prepare_parameters;
+    }
 
     if ( $c->debug && keys %{ $c->req->params } ) {
         my $t = Text::ASCIITable->new;
@@ -444,7 +469,6 @@ sub prepare {
         $c->log->debug( 'Parameters are', $t->draw );
     }
 
-    $c->prepare_uploads;
     return $c;
 }
 
@@ -497,6 +521,14 @@ sub prepare_action {
     $c->log->debug( 'Arguments are "' . join( '/', @args ) . '"' )
       if ( $c->debug && @args );
 }
+
+=item $c->prepare_body
+
+Prepare message body.
+
+=cut
+
+sub prepare_body { }
 
 =item $c->prepare_connection
 

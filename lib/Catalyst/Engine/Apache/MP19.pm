@@ -19,7 +19,7 @@ Apache::Const->import( -compile => ':common' );
 
 =head1 NAME
 
-Catalyst::Engine::Apache::MP2 - Catalyst Apache MP2 Engine
+Catalyst::Engine::Apache::MP19 - Catalyst Apache MP19 Engine
 
 =head1 SYNOPSIS
 
@@ -27,7 +27,7 @@ See L<Catalyst>.
 
 =head1 DESCRIPTION
 
-This is the Catalyst engine specialized for Apache mod_perl version 2.
+This is the Catalyst engine specialized for Apache mod_perl version 1.9x.
 
 =head1 OVERLOADED METHODS
 
@@ -75,8 +75,8 @@ sub prepare_uploads {
     my $c = shift;
 
     my @uploads;
-
-    for my $field ( $c->apache->upload ) {
+    
+    for my $field ( $c->request->param ) {
 
         for my $upload ( $c->apache->upload($field) ) {
 
@@ -91,7 +91,16 @@ sub prepare_uploads {
         }
     }
 
-    $c->req->_assign_values( $c->req->uploads, \@uploads );
+    $c->request->_assign_values( $c->req->uploads, \@uploads );
+}
+
+=item $c->prepare_request($r)
+
+=cut
+
+sub prepare_request {
+    my ( $c, $r ) = @_;
+    $c->apache( Apache::Request->new($r) );
 }
 
 =back

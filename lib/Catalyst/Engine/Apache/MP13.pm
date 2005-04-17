@@ -12,7 +12,7 @@ Apache::Constants->import(':common');
 
 =head1 NAME
 
-Catalyst::Engine::Apache::MP1 - Catalyst Apache MP1 Engine
+Catalyst::Engine::Apache::MP13 - Catalyst Apache MP1.3 Engine
 
 =head1 SYNOPSIS
 
@@ -20,7 +20,7 @@ See L<Catalyst>.
 
 =head1 DESCRIPTION
 
-This is the Catalyst engine specialized for Apache mod_perl version 1.
+This is the Catalyst engine specialized for Apache mod_perl version 1.3x.
 
 =head1 OVERLOADED METHODS
 
@@ -84,6 +84,15 @@ sub prepare_uploads {
     }
 
     $c->req->_assign_values( $c->req->uploads, \@uploads );
+}
+
+=item $c->prepare_request($r)
+
+=cut
+
+sub prepare_request {
+    my ( $c, $r ) = @_;
+    $c->apache( Apache::Request->new($r) );
 }
 
 =back

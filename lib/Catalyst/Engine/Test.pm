@@ -49,6 +49,15 @@ This class overloads some methods from C<Catalyst::Engine>.
 
 =over 4
 
+=item $c->finalize_body
+
+=cut
+
+sub finalize_body {
+    my $c = shift;
+    $c->http->response->content( $c->response->body );
+}
+
 =item $c->finalize_headers
 
 =cut
@@ -63,13 +72,13 @@ sub finalize_headers {
     }
 }
 
-=item $c->finalize_output
+=item $c->prepare_body
 
 =cut
 
-sub finalize_output {
+sub prepare_body {
     my $c = shift;
-    $c->http->response->content( $c->response->output );
+    $c->request->body( $c->http->request->content );
 }
 
 =item $c->prepare_connection
@@ -130,7 +139,7 @@ sub prepare_parameters {
                     tempname => $fh->filename,
                     type     => $part->content_type
                 );
-                
+
                 $fh->close;
 
                 push( @uploads, $parameters{name}, $upload );
@@ -141,7 +150,7 @@ sub prepare_parameters {
             }
         }
     }
-    
+
     $c->req->_assign_values( $c->req->parameters, \@params );
     $c->req->_assign_values( $c->req->uploads, \@uploads );
 }

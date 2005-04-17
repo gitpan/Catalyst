@@ -36,13 +36,34 @@ This class overloads some methods from C<Catalyst::Engine>.
 
 =over 4
 
-=item $c->finalize_output
+=item $c->finalize_body
 
 =cut
 
-sub finalize_output {
+sub finalize_body {
     my $c = shift;
-    $c->apache->print( $c->response->output );
+    $c->apache->print( $c->response->body );
+}
+
+=item $c->prepare_body
+
+=cut
+
+sub prepare_body {
+    my $c = shift;
+
+    my $length = $c->request->content_length;
+    my ( $buffer, $content );
+
+    while ($length) {
+
+        $c->apache->read( $buffer, ( $length < 8192 ) ? $length : 8192 );
+
+        $length  -= length($buffer);
+        $content .= $buffer;
+    }
+    
+    $c->request->body($content);
 }
 
 =item $c->prepare_connection
@@ -82,7 +103,7 @@ sub prepare_parameters {
 
 =cut
 
-# XXX needs fixing, only work with <Location> directive, 
+# XXX needs fixing, only work with <Location> directive,
 # not <Directory> directive
 sub prepare_path {
     my $c = shift;
@@ -97,15 +118,6 @@ sub prepare_path {
     my $path = $c->apache->location;
     $base->path( $path =~ /\/$/ ? $path : "$path/" );
     $c->request->base( $base->as_string );
-}
-
-=item $c->prepare_request($r)
-
-=cut
-
-sub prepare_request {
-    my ( $c, $r ) = @_;
-    $c->apache( Apache::Request->new($r) );
 }
 
 =item $c->run

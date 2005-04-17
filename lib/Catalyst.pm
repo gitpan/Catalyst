@@ -9,7 +9,7 @@ use Text::ASCIITable;
 
 __PACKAGE__->mk_classdata($_) for qw/dispatcher engine log/;
 
-our $VERSION = '5.00';
+our $VERSION = '5.01';
 our @ISA;
 
 =head1 NAME
@@ -47,10 +47,10 @@ Catalyst - The Elegant MVC Web Application Framework
     sub index : Path('/index.html') {
         my ( $self, $c ) = @_;
         $c->res->output('Hello');
-        $c->forward('_foo');
+        $c->forward('foo');
     }
 
-    sub product : Regex('/^product[_]*(\d*).html$/') {
+    sub product : Regex('^product[_]*(\d*).html$') {
         my ( $self, $c ) = @_;
         $c->stash->{template} = 'product.tt';
         $c->stash->{product} = $c->req->snippets->[0];
@@ -156,7 +156,10 @@ sub import {
 
         require mod_perl;
 
-        if ( $mod_perl::VERSION >= 1.99 ) {
+        if ( $ENV{MOD_PERL_API_VERSION} == 2 ) {
+            $engine = 'Catalyst::Engine::Apache::MP20';
+        }
+        elsif ( $mod_perl::VERSION >= 1.99 ) {
             $engine = 'Catalyst::Engine::Apache::MP19';
         }
         else {
@@ -164,12 +167,14 @@ sub import {
         }
     }
 
-    $caller->log->info("You are running an old helper script! ".
-             "Please update your scripts by regenerating the ".
-             "application and copying over the new scripts.")
-        if ( $ENV{CATALYST_SCRIPT_GEN} && ( 
-             $ENV{CATALYST_SCRIPT_GEN} < 
-             $Catalyst::Helper::CATALYST_SCRIPT_GEN )) ;
+    $caller->log->info( "You are running an old helper script! "
+          . "Please update your scripts by regenerating the "
+          . "application and copying over the new scripts." )
+      if ( $ENV{CATALYST_SCRIPT_GEN}
+        && (
+            $ENV{CATALYST_SCRIPT_GEN} < $Catalyst::Helper::CATALYST_SCRIPT_GEN )
+      );
+
     # Process options
     my @plugins;
     foreach (@options) {
@@ -211,19 +216,6 @@ sub import {
     $caller->log->debug( 'Loaded plugins', $t->draw )
       if ( @plugins && $caller->debug );
 
-    # Engine
-    $engine = "Catalyst::Engine::$ENV{CATALYST_ENGINE}"
-      if $ENV{CATALYST_ENGINE};
-
-    $engine->require;
-    die qq/Couldn't load engine "$engine", "$@"/ if $@;
-    {
-        no strict 'refs';
-        push @{"$caller\::ISA"}, $engine;
-    }
-    $caller->engine($engine);
-    $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
-
     # Dispatcher
     $dispatcher = "Catalyst::Dispatcher::$ENV{CATALYST_DISPATCHER}"
       if $ENV{CATALYST_DISPATCHER};
@@ -237,6 +229,18 @@ sub import {
     $caller->dispatcher($dispatcher);
     $caller->log->debug(qq/Loaded dispatcher "$dispatcher"/) if $caller->debug;
 
+    # Engine
+    $engine = "Catalyst::Engine::$ENV{CATALYST_ENGINE}"
+      if $ENV{CATALYST_ENGINE};
+
+    $engine->require;
+    die qq/Couldn't load engine "$engine", "$@"/ if $@;
+    {
+        no strict 'refs';
+        push @{"$caller\::ISA"}, $engine;
+    }
+    $caller->engine($engine);
+    $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
 }
 
 =item $c->engine
@@ -275,6 +279,10 @@ Mailing-Lists:
     http://lists.rawmode.org/mailman/listinfo/catalyst
     http://lists.rawmode.org/mailman/listinfo/catalyst-dev
 
+Web:
+
+    http://catalyst.perl.org
+
 =head1 SEE ALSO
 
 =over 4
@@ -299,7 +307,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 THANK YOU
 
-Andy Grundman, Andrew Ford, Andrew Ruthven, Christian Hansen,
+Andy Grundman, Andrew Ford, Andrew Ruthven, Autrijus Tang, Christian Hansen,
 Christopher Hicks, Dan Sully, Danijel Milicevic, David Naughton,
 Gary Ashton Jones, Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg,
 Tatsuhiko Miyagawa and all the others who've helped.

@@ -22,7 +22,7 @@ See L<Catalyst::Manual::Intro>
 
 =head1 DESCRIPTION
 
-Bootstrap a Catalyst application.
+Bootstrap a Catalyst application. Autogenerates scripts
 
 =head2 METHODS
 
@@ -50,6 +50,8 @@ sub get_file {
 
 =head3 mk_app
 
+Create the main application skeleton.
+
 =cut
 
 sub mk_app {
@@ -60,6 +62,8 @@ sub mk_app {
     $self->{dir} =~ s/\:\:/-/g;
     $self->{startperl} = $Config{startperl};
     $self->{scriptgen}=$CATALYST_SCRIPT_GEN;
+    $self->{author}=$self->{author} = $ENV{'AUTHOR'} ||
+                    @{[getpwuid($<)]}[6];
     $self->_mk_dirs;
     $self->_mk_appclass;
     $self->_mk_makefile;
@@ -76,12 +80,17 @@ sub mk_app {
 
 =head3 mk_component
 
+This method is called by create.pl to make new components
+for your application.
+
 =cut
 
 sub mk_component {
     my $self = shift;
     my $app  = shift;
     $self->{app} = $app;
+    $self->{author}=$self->{author} = $ENV{'AUTHOR'} ||
+                    @{[getpwuid($<)]}[6];
     $self->{base} = File::Spec->catdir( $FindBin::Bin, '..' );
     unless ( $_[0] =~ /^model|m|view|v|controller|c\$/i ) {
         my $helper = shift;
@@ -154,6 +163,8 @@ sub mk_component {
 
 =head3 mk_dir
 
+Surprisingly, this function makes a directory.
+
 =cut
 
 sub mk_dir {
@@ -170,6 +181,8 @@ sub mk_dir {
 }
 
 =head3 mk_file
+
+writes content to a file.
 
 =cut
 
@@ -209,7 +222,8 @@ sub next_test {
 
 =head3 render_file
 
-Render and create a file from a template in DATA.
+Render and create a file from a template in DATA using 
+Template Toolkit.
 
 =cut
 
@@ -350,6 +364,11 @@ All helper classes should be under one of the following namespaces.
     Catalyst::Helper::View::
     Catalyst::Helper::Controller::
 
+=head1 NOTE
+
+The helpers will read author name from /etc/passwd by default.
+To override, please export the AUTHOR variable.
+
 =head1 SEE ALSO
 
 L<Catalyst::Manual>, L<Catalyst::Test>, L<Catalyst::Request>,
@@ -361,8 +380,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software . You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -403,12 +422,12 @@ Very nice application.
 
 =head1 AUTHOR
 
-Clever guy
+[%author%]
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software . You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -490,8 +509,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software. You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -529,8 +548,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software. You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -588,8 +607,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software. You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -646,8 +665,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software. You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -707,8 +726,8 @@ Sebastian Riedel, C<sri\@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software. You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 
@@ -739,12 +758,12 @@ Very nice component.
 
 =head1 AUTHOR
 
-Clever guy
+[%author%]
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software . You can redistribute it and/or modify 
+it under the same terms as perl itself.
 
 =cut
 

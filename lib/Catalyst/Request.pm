@@ -4,11 +4,12 @@ use strict;
 use base 'Class::Accessor::Fast';
 
 __PACKAGE__->mk_accessors(
-    qw/action address arguments base cookies headers hostname match method
-      parameters path snippets uploads/
+    qw/action address arguments body base cookies headers hostname match
+      method parameters path snippets uploads/
 );
 
 *args   = \&arguments;
+*input  = \&body;
 *params = \&parameters;
 
 sub content_encoding { shift->headers->content_encoding(@_) }
@@ -48,6 +49,7 @@ Catalyst::Request - Catalyst Request Class
     $req->args;
     $req->arguments;
     $req->base;
+    $req->body;
     $req->content_encoding;
     $req->content_length;
     $req->content_type;
@@ -55,6 +57,7 @@ Catalyst::Request - Catalyst Request Class
     $req->header;
     $req->headers;
     $req->hostname;
+    $req->input;
     $req->match;
     $req->method;
     $req->param;
@@ -106,6 +109,13 @@ Returns a reference to an array containing the arguments.
 
 Contains the url base. This will always have a trailing slash.
 
+=item $req->body
+
+Contains the message body of the request unless Content-Type is
+C<application/x-www-form-urlencoded> or C<multipart/form-data>.
+
+    print $c->request->body
+
 =item $req->content_encoding
 
 Shortcut to $req->headers->content_encoding
@@ -139,6 +149,10 @@ Returns an L<HTTP::Headers> object containing the headers.
 Contains the hostname of the remote user.
 
     print $c->request->hostname
+
+=item $req->input
+
+Shortcut for $req->body.
 
 =item $req->match
 

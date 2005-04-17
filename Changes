@@ -1,5 +1,17 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.01  Sun Apr 17 17:38:00 2005
+        - some documentation bugs fixes/additions
+        - added Catalyst::Utils
+        - fixed regexp bug (Matt S Trout)
+        - fixed upload bug with MP19
+        - added $c->req->body
+        - aliased $c->res->output to $c->res->body
+        - Read AUTHOR from passwd or $ENV{AUTHOR} when 
+          generating code.
+        - extended attribute handling 
+        - allow global config to override components
+
 5.00  Fri Apr 15 18:00:00 2005
         - new core to support inheritance trees
         - new syntax for action declaration
