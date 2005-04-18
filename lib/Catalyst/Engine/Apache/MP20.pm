@@ -1,18 +1,24 @@
-package Catalyst::Engine::Apache::MP13;
+package Catalyst::Engine::Apache::MP20;
 
 use strict;
 use base 'Catalyst::Engine::Apache';
 
-use Apache            ();
-use Apache::Constants ();
-use Apache::Request   ();
-use Apache::Cookie    ();
+use Apache2::Connection  ();
+use Apache2::Const       ();
+use Apache2::RequestIO   ();
+use Apache2::RequestRec  ();
+use Apache2::RequestUtil ();
+use Apache2::Request     ();
+use Apache2::Cookie      ();
+use Apache2::Upload      ();
+use Apache2::URI         ();
+use APR::URI             ();
 
-Apache::Constants->import(':common');
+Apache2::Const->import( -compile => ':common' );
 
 =head1 NAME
 
-Catalyst::Engine::Apache::MP13 - Catalyst Apache MP13 Engine
+Catalyst::Engine::Apache::MP20 - Catalyst Apache MP20 Engine
 
 =head1 SYNOPSIS
 
@@ -20,7 +26,7 @@ See L<Catalyst>.
 
 =head1 DESCRIPTION
 
-This is the Catalyst engine specialized for Apache mod_perl version 1.3x.
+This is the Catalyst engine specialized for Apache mod_perl version 2.0.
 
 =head1 OVERLOADED METHODS
 
@@ -49,8 +55,6 @@ sub finalize_headers {
     $c->apache->status( $c->response->status );
     $c->apache->content_type( $c->response->header('Content-Type') );
 
-    $c->apache->send_http_header;
-
     return 0;
 }
 
@@ -58,7 +62,7 @@ sub finalize_headers {
 
 =cut
 
-sub handler ($$) {
+sub handler : method {
     shift->SUPER::handler(@_);
 }
 
@@ -68,7 +72,7 @@ sub handler ($$) {
 
 sub prepare_request {
     my ( $c, $r ) = @_;
-    $c->apache( Apache::Request->new($r) );
+    $c->apache( Apache2::Request->new($r) );
 }
 
 =item $c->prepare_uploads
@@ -80,16 +84,19 @@ sub prepare_uploads {
 
     my @uploads;
 
-    for my $upload ( $c->apache->upload ) {
+    for my $field ( $c->apache->upload ) {
 
-        my $object = Catalyst::Request::Upload->new(
-            filename => $upload->filename,
-            size     => $upload->size,
-            tempname => $upload->tempname,
-            type     => $upload->type
-        );
+        for my $upload ( $c->apache->upload($field) ) {
 
-        push( @uploads, $upload->name, $object );
+            my $object = Catalyst::Request::Upload->new(
+                filename => $upload->filename,
+                size     => $upload->size,
+                tempname => $upload->tempname,
+                type     => $upload->type
+            );
+
+            push( @uploads, $field, $object );
+        }
     }
 
     $c->req->_assign_values( $c->req->uploads, \@uploads );
