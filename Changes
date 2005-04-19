@@ -1,5 +1,16 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.03  Tue Apr 19 20:35:00 2005 (Revision 462)
+        - Fixed Test example (Torsten Seeman)
+        - Added Plugins chapter to manual
+        - applied doc patch from Robert Boone <robert@rlb3.com>
+        - Improved Dispatcher error messages.
+        - Refactored so we don't need to include helper from
+          Catalyst.pm - Fixes issues with FindBin
+        - applied HTTP.pm patch from Andy Grundman <andy@hybridized.org>
+        - added plugin() method for instant plugins
+        - FCGI is no more considered experimental
+
 5.02  Mon Apr 18 10:00:00 2005
         - fixed manifest
 

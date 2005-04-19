@@ -126,7 +126,7 @@ Errors are available via $c->error.
 
 sub execute {
     my ( $c, $class, $code ) = @_;
-    $class = $c->comp($class) || $class;
+    $class = $c->components->{$class} || $class;
     $c->state(0);
     my $callsub = ( caller(1) )[3];
 
@@ -192,6 +192,10 @@ sub finalize {
     $c->finalize_body;
     return $status;
 }
+
+=item $c->finalize_output
+
+alias to finalize_body
 
 =item $c->finalize_body
 
@@ -459,7 +463,8 @@ sub prepare {
         $t->setColWidth( 'Key',   37, 1 );
         $t->setColWidth( 'Value', 36, 1 );
         for my $key ( keys %{ $c->req->params } ) {
-            my $value = $c->req->params->{$key} || '';
+            my $param = $c->req->params->{$key};
+            my $value = defined($param) ? $param : '';
             $t->addRow( $key, $value );
         }
         $c->log->debug( 'Parameters are', $t->draw );
