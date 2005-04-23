@@ -1,5 +1,16 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.10  Sat Apr 23 11:16:00 2005
+        - Updated: require latest Module::Pluggable::Fast
+        - New installer for templates and stuff using Module::Build
+        - scripts are now prefixed, for being installable
+        IMPORTANT: You have to regenerate the script directory,
+        remove Makefile.PL and add Build.PL
+        - Added compat to install Module::Build if required.
+        - Improved: Params handling with MP engines
+        - Fixed: Params handling on POST with CGI engine (Andy Grundman)
+        - Fixed: Helper.pm on Win32 (Matt S Trout)
+
 5.03  Tue Apr 19 20:35:00 2005 (Revision 462)
         - Fixed Test example (Torsten Seeman)
         - Added Plugins chapter to manual

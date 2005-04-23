@@ -132,10 +132,14 @@ sub prepare_parameters {
     my $c = shift;
     
     my ( @params );
+    
+    
+    if ( $c->request->method eq 'POST' ) {
 
-    for my $param ( $c->cgi->url_param ) { 
-        for my $value (  $c->cgi->url_param($param) ) {
-            push ( @params, $param, $value );
+        for my $param ( $c->cgi->url_param ) {
+            for my $value (  $c->cgi->url_param($param) ) {
+                push ( @params, $param, $value );
+            }
         }
     }
 
@@ -184,8 +188,8 @@ sub prepare_path {
 =cut
 
 sub prepare_request { 
-    my $c = shift;
-    $c->cgi( CGI->new );
+    my ( $c, $cgi ) = @_;
+    $c->cgi( $cgi || CGI->new );
     $c->cgi->_reset_globals;
 }
 

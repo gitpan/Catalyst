@@ -364,7 +364,7 @@ sub handler {
             my $elapsed;
             ( $elapsed, $status ) = $class->benchmark($handler);
             $elapsed = sprintf '%f', $elapsed;
-            my $av = sprintf '%.3f', 1 / $elapsed;
+            my $av = sprintf '%.3f', ( $elapsed == 0 ? '??' : (1 / $elapsed) );
             my $t = Text::ASCIITable->new;
             $t->setCols( 'Action', 'Time' );
             $t->setColWidth( 'Action', 64, 1 );
@@ -387,7 +387,7 @@ sub handler {
     return $status;
 }
 
-=item $c->prepare($r)
+=item $c->prepare($engine)
 
 Turns the engine-specific request( Apache, CGI ... )
 into a Catalyst context .
@@ -462,7 +462,7 @@ sub prepare {
         $t->setCols( 'Key', 'Value' );
         $t->setColWidth( 'Key',   37, 1 );
         $t->setColWidth( 'Value', 36, 1 );
-        for my $key ( keys %{ $c->req->params } ) {
+        for my $key ( sort keys %{ $c->req->params } ) {
             my $param = $c->req->params->{$key};
             my $value = defined($param) ? $param : '';
             $t->addRow( $key, $value );

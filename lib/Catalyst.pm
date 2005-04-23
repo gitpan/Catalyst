@@ -5,11 +5,12 @@ use base 'Catalyst::Base';
 use UNIVERSAL::require;
 use Catalyst::Log;
 use Text::ASCIITable;
-our $CATALYST_SCRIPT_GEN = 2;
+use Path::Class;
+our $CATALYST_SCRIPT_GEN = 3;
 
 __PACKAGE__->mk_classdata($_) for qw/dispatcher engine log/;
 
-our $VERSION = '5.03';
+our $VERSION = '5.10';
 our @ISA;
 
 =head1 NAME
@@ -239,6 +240,28 @@ sub import {
     }
     $caller->engine($engine);
     $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
+
+    # Find home
+    my $name = $caller;
+    $name =~ s/\:\:/\//g;
+    my $path = $INC{"$name.pm"};
+    my $home = file($path)->absolute->dir;
+    $name =~ /(\w+)$/;
+    my $append = $1;
+    my $subdir = dir($home)->subdir($append);
+    for ( split '/', $name ) { $home = dir($home)->parent }
+    if ( $home =~ /blib$/ ) { $home = dir($home)->parent }
+    elsif ( !-f file( $home, 'Makefile.PL' ) ) { $home = $subdir }
+
+    if ( $caller->debug ) {
+        $home
+          ? ( -d $home )
+          ? $caller->log->debug(qq/Found home "$home"/)
+          : $caller->log->debug(qq/Home "$home" doesn't exist/)
+          : $caller->log->debug(q/Couldn't find home/);
+    }
+    $caller->config->{home} = $home;
+    $caller->config->{root} = dir($home)->subdir('root');
 }
 
 =item $c->engine
@@ -286,7 +309,7 @@ sub plugin {
 
 =head1 LIMITATIONS
 
-mod_perl2 support are considered experimental and may contain bugs.
+mod_perl2 support is considered experimental and may contain bugs.
 
 =head1 SUPPORT
 
@@ -329,8 +352,8 @@ Sebastian Riedel, C<sri@oook.de>
 
 Andy Grundman, Andrew Ford, Andrew Ruthven, Autrijus Tang, Christian Hansen,
 Christopher Hicks, Dan Sully, Danijel Milicevic, David Naughton,
-Gary Ashton Jones, Jesse Sheidlower, Johan Lindstrom, Marcus Ramberg,
-Tatsuhiko Miyagawa and all the others who've helped.
+Gary Ashton Jones, Jesse Sheidlower, Jody Belka, Johan Lindstrom, Leon Brocard,
+Marcus Ramberg, Tatsuhiko Miyagawa and all the others who've helped.
 
 =head1 LICENSE
 
