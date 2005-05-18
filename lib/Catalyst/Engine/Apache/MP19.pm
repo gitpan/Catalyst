@@ -1,21 +1,7 @@
 package Catalyst::Engine::Apache::MP19;
 
 use strict;
-use base 'Catalyst::Engine::Apache';
-
-use Apache2             ();
-use Apache::Connection  ();
-use Apache::Const       ();
-use Apache::RequestIO   ();
-use Apache::RequestRec  ();
-use Apache::RequestUtil ();
-use Apache::Request     ();
-use Apache::Cookie      ();
-use Apache::Upload      ();
-use Apache::URI         ();
-use APR::URI            ();
-
-Apache::Const->import( -compile => ':common' );
+use base qw[Catalyst::Engine::Apache::MP19::Base Catalyst::Engine::CGI];
 
 =head1 NAME
 
@@ -31,49 +17,53 @@ This is the Catalyst engine specialized for Apache mod_perl version 1.9x.
 
 =head1 OVERLOADED METHODS
 
-This class overloads some methods from C<Catalyst::Engine::Apache>.
+This class overloads some methods from C<Catalyst::Engine::Apache::MP13::Base>
+and C<Catalyst::Engine::CGI>.
 
 =over 4
 
-=item $c->finalize_headers
+=item $c->prepare_body
 
 =cut
 
-sub finalize_headers {
-    my $c = shift;
-
-    for my $name ( $c->response->headers->header_field_names ) {
-        next if $name =~ /Content-Type/i;
-        my @values = $c->response->header($name);
-        $c->apache->headers_out->add( $name => $_ ) for @values;
-    }
-
-    if ( $c->response->header('Set-Cookie') && $c->response->status >= 300 ) {
-        my @values = $c->response->header('Set-Cookie');
-        $c->apache->err_headers_out->add( 'Set-Cookie' => $_ ) for @values;
-    }
-
-    $c->apache->status( $c->response->status );
-    $c->apache->content_type( $c->response->header('Content-Type') );
-
-    return 0;
+sub prepare_body {
+    shift->Catalyst::Engine::CGI::prepare_body(@_);
 }
 
-=item $c->handler
+=item $c->prepare_parameters
 
 =cut
 
-sub handler : method {
-    shift->SUPER::handler(@_);
+sub prepare_parameters {
+    shift->Catalyst::Engine::CGI::prepare_parameters(@_);
 }
 
-=item $c->prepare_request($r)
+=item $c->prepare_request
 
 =cut
 
 sub prepare_request {
-    my ( $c, $r ) = @_;
-    $c->apache( Apache::Request->new($r) );
+    my ( $c, $r, @arguments ) = @_;
+
+    unless ( $ENV{REQUEST_METHOD} ) {
+
+        $ENV{CONTENT_TYPE}   = $r->headers_in->get("Content-Type");
+        $ENV{CONTENT_LENGTH} = $r->headers_in->get("Content-Length");
+        $ENV{QUERY_STRING}   = $r->args;
+        $ENV{REQUEST_METHOD} = $r->method;
+
+        my $cleanup = sub {
+            delete( $ENV{$_} ) for qw( CONTENT_TYPE
+                                       CONTENT_LENGTH
+                                       QUERY_STRING
+                                       REQUEST_METHOD );
+        };
+
+        $r->pool->cleanup_register($cleanup);
+    }
+
+    $c->SUPER::prepare_request($r);
+    $c->Catalyst::Engine::CGI::prepare_request( $r, @arguments );
 }
 
 =item $c->prepare_uploads
@@ -81,36 +71,14 @@ sub prepare_request {
 =cut
 
 sub prepare_uploads {
-    my $c = shift;
-
-    # This is a workaround for a know bug with libapreq <= 2.0.5
-    # http://svn.apache.org/viewcvs.cgi?rev=122925&view=rev
-    
-    my @uploads;    
-
-    for my $field ( $c->request->param ) {
-
-        for my $upload ( $c->apache->upload($field) ) {
-
-            my $object = Catalyst::Request::Upload->new(
-                filename => $upload->filename,
-                size     => $upload->size,
-                tempname => $upload->tempname,
-                type     => $upload->type
-            );
-
-            push( @uploads, $field, $object );
-        }
-    }
-
-    $c->request->_assign_values( $c->req->uploads, \@uploads );
+    shift->Catalyst::Engine::CGI::prepare_uploads(@_);
 }
 
 =back
 
 =head1 SEE ALSO
 
-L<Catalyst>, L<Catalyst::Engine>, L<Catalyst::Engine::Apache>.
+L<Catalyst>, L<Catalyst::Engine>, L<Catalyst::Engine::Apache::Base>.
 
 =head1 AUTHOR
 

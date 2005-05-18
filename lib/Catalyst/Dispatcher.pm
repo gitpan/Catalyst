@@ -9,14 +9,6 @@ use Tree::Simple::Visitor::FindByPath;
 
 __PACKAGE__->mk_classdata($_) for qw/actions tree/;
 
-# These are the core structures
-__PACKAGE__->actions(
-    { plain => {}, private => {}, regex => {}, compiled => [], reverse => {} }
-);
-
-# We use a tree
-__PACKAGE__->tree( Tree::Simple->new( 0, Tree::Simple->ROOT ) );
-
 =head1 NAME
 
 Catalyst::Dispatcher - The Catalyst Dispatcher
@@ -52,37 +44,37 @@ sub dispatch {
     }
 
     my $default = $action eq 'default' ? $namespace : undef;
-    my $results = $c->get_action( $action, $default );
+    my $results = $c->get_action( $action, $default, $default ? 1 : 0 );
     $namespace ||= '/';
 
     if ( @{$results} ) {
 
         # Execute last begin
         $c->state(1);
-        if ( my $begin = @{ $c->get_action( 'begin', $namespace ) }[-1] ) {
+        if ( my $begin = @{ $c->get_action( 'begin', $namespace, 1 ) }[-1] ) {
             $c->execute( @{ $begin->[0] } );
             return if scalar @{ $c->error };
         }
 
         # Execute the auto chain
-        my $auto = 0;
-        for my $auto ( @{ $c->get_action( 'auto', $namespace ) } ) {
+        my $auto;
+        for $auto ( @{ $c->get_action( 'auto', $namespace, 1 ) } ) {
             $c->execute( @{ $auto->[0] } );
             return if scalar @{ $c->error };
             last unless $c->state;
-            $auto++;
         }
 
         # Execute the action or last default
-        my $mkay = $auto ? $c->state ? 1 : 0 : 1;
+        my $mkay = defined $auto ? $c->state ? 1 : 0 : 1;
         if ( ( my $action = $c->req->action ) && $mkay ) {
-            if ( my $result = @{ $c->get_action( $action, $default ) }[-1] ) {
+            if ( my $result = @{ $c->get_action( $action, $default, 1 ) }[-1] )
+            {
                 $c->execute( @{ $result->[0] } );
             }
         }
 
         # Execute last end
-        if ( my $end = @{ $c->get_action( 'end', $namespace ) }[-1] ) {
+        if ( my $end = @{ $c->get_action( 'end', $namespace, 1 ) }[-1] ) {
             $c->execute( @{ $end->[0] } );
             return if scalar @{ $c->error };
         }
@@ -135,9 +127,20 @@ sub forward {
 
     unless ( @{$results} ) {
         my $class = $command || '';
+        my $path = $class . '.pm';
+        $path =~ s/::/\//g;
 
-        if ( $class =~ /[^\w\:]/ ) {
-            my $error = qq/"$class" is an invalid Class name/;
+        unless ( $INC{$path} ) {
+            my $error =
+              qq/Couldn't forward to "$class". Invalid or not loaded./;
+            $c->error($error);
+            $c->log->debug($error) if $c->debug;
+            return 0;
+        }
+
+        unless ( UNIVERSAL::isa( $class, 'Catalyst::Base' ) ) {
+            my $error =
+              qq/Can't forward to "$class". Class is not a Catalyst component./;
             $c->error($error);
             $c->log->debug($error) if $c->debug;
             return 0;
@@ -151,7 +154,8 @@ sub forward {
         }
 
         else {
-            my $error = qq/Couldn't forward to "$class". Does not implement "$method"/;
+            my $error =
+              qq/Couldn't forward to "$class". Does not implement "$method"/;
             $c->error($error);
             $c->log->debug($error)
               if $c->debug;
@@ -169,24 +173,24 @@ sub forward {
     return $c->state;
 }
 
-=item $c->get_action( $action, $namespace )
+=item $c->get_action( $action, $namespace, $inherit )
 
 Get an action in a given namespace.
 
 =cut
 
 sub get_action {
-    my ( $c, $action, $namespace ) = @_;
+    my ( $c, $action, $namespace, $inherit ) = @_;
     return [] unless $action;
     $namespace ||= '';
+    $inherit   ||= 0;
 
     if ($namespace) {
         $namespace = '' if $namespace eq '/';
         my $parent = $c->tree;
         my @results;
-        my %allowed = ( begin => 1, auto => 1, default => 1, end => 1 );
 
-        if ( $allowed{$action} ) {
+        if ($inherit) {
             my $result = $c->actions->{private}->{ $parent->getUID }->{$action};
             push @results, [$result] if $result;
             my $visitor = Tree::Simple::Visitor::FindByPath->new;
@@ -257,11 +261,13 @@ sub set_action {
     my %flags;
 
     for my $attr ( @{$attrs} ) {
-        if    ( $attr =~ /^(Local|Relative)$/ )        { $flags{local}++ }
-        elsif ( $attr =~ /^(Global|Absolute)$/ )       { $flags{global}++ }
-        elsif ( $attr =~ /^Path\((.+)\)$/i )           { $flags{path} = $1 }
-        elsif ( $attr =~ /^Private$/i )                { $flags{private}++ }
-        elsif ( $attr =~ /^(Regex|Regexp)\((.+)\)$/i ) { $flags{regex} = $2 }
+        if    ( $attr =~ /^(Local|Relative)$/ )    { $flags{local}++ }
+        elsif ( $attr =~ /^(Global|Absolute)$/ )   { $flags{global}++ }
+        elsif ( $attr =~ /^Path\(\s*(.+)\s*\)$/i ) { $flags{path} = $1 }
+        elsif ( $attr =~ /^Private$/i )            { $flags{private}++ }
+        elsif ( $attr =~ /^(Regex|Regexp)\(\s*(.+)\s*\)$/i ) {
+            $flags{regex} = $2;
+        }
     }
 
     if ( $flags{private} && ( keys %flags > 1 ) ) {
@@ -342,10 +348,24 @@ Setup actions for a component.
 sub setup_actions {
     my ( $self, $comps ) = @_;
 
+    # These are the core structures
+    $self->actions(
+        {
+            plain    => {},
+            private  => {},
+            regex    => {},
+            compiled => [],
+            reverse  => {}
+        }
+    );
+
+    # We use a tree
+    $self->tree( Tree::Simple->new( 0, Tree::Simple->ROOT ) );
+
     for my $comp (@$comps) {
         $comp = ref $comp || $comp;
 
-        for my $action ( @{ $comp->_cache } ) {
+        for my $action ( @{ Catalyst::Utils::reflect_actions($comp) } ) {
             my ( $code, $attrs ) = @{$action};
             my $name = '';
             no strict 'refs';

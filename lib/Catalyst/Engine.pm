@@ -20,7 +20,7 @@ require Module::Pluggable::Fast;
 $Data::Dumper::Terse = 1;
 
 __PACKAGE__->mk_classdata('components');
-__PACKAGE__->mk_accessors(qw/request response state/);
+__PACKAGE__->mk_accessors(qw/counter request response state/);
 
 *comp = \&component;
 *req  = \&request;
@@ -30,8 +30,9 @@ __PACKAGE__->mk_accessors(qw/request response state/);
 *finalize_output = \&finalize_body;
 
 # For statistics
-our $COUNT = 1;
-our $START = time;
+our $COUNT     = 1;
+our $START     = time;
+our $RECURSION = 1000;
 
 =head1 NAME
 
@@ -80,19 +81,30 @@ Regex search for a component.
 =cut
 
 sub component {
-    my ( $c, $name ) = @_;
+    my $c = shift;
 
-    if ( my $component = $c->components->{$name} ) {
-        return $component;
-    }
+    if (@_) {
 
-    else {
-        for my $component ( keys %{ $c->components } ) {
-            return $c->components->{$component} if $component =~ /$name/i;
+        my $name = shift;
+
+        if ( my $component = $c->components->{$name} ) {
+            return $component;
+        }
+
+        else {
+            for my $component ( keys %{ $c->components } ) {
+                return $c->components->{$component} if $component =~ /$name/i;
+            }
         }
     }
 
+    return sort keys %{ $c->components };
 }
+
+=item $c->counter
+
+Returns a hashref containing coderefs and execution counts.
+(Needed for deep recursion detection)
 
 =item $c->error
 
@@ -130,12 +142,26 @@ sub execute {
     $c->state(0);
     my $callsub = ( caller(1) )[3];
 
+    my $action = '';
+    if ( $c->debug ) {
+        $action = $c->actions->{reverse}->{"$code"};
+        $action = "/$action" unless $action =~ /\-\>/;
+        $c->counter->{"$code"}++;
+
+        if ( $c->counter->{"$code"} > $RECURSION ) {
+            my $error = qq/Deep recursion detected in "$action"/;
+            $c->log->error($error);
+            $c->error($error);
+            $c->state(0);
+            return $c->state;
+        }
+
+        $action = "-> $action" if $callsub =~ /forward$/;
+    }
+
     eval {
         if ( $c->debug )
         {
-            my $action = $c->actions->{reverse}->{"$code"};
-            $action = "/$action" unless $action =~ /\-\>/;
-            $action = "-> $action" if $callsub =~ /forward$/;
             my ( $elapsed, @state ) =
               $c->benchmark( $code, $class, $c, @{ $c->req->args } );
             push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
@@ -195,7 +221,7 @@ sub finalize {
 
 =item $c->finalize_output
 
-alias to finalize_body
+<obsolete>, see finalize_body
 
 =item $c->finalize_body
 
@@ -339,14 +365,14 @@ Finalize headers.
 
 sub finalize_headers { }
 
-=item $c->handler( $class, $engine )
+=item $c->handler( $class, @arguments )
 
 Handles the request.
 
 =cut
 
 sub handler {
-    my ( $class, $engine ) = @_;
+    my ( $class, @arguments ) = @_;
 
     # Always expect worst case!
     my $status = -1;
@@ -354,7 +380,7 @@ sub handler {
         my @stats = ();
 
         my $handler = sub {
-            my $c = $class->prepare($engine);
+            my $c = $class->prepare(@arguments);
             $c->{stats} = \@stats;
             $c->dispatch;
             return $c->finalize;
@@ -364,7 +390,8 @@ sub handler {
             my $elapsed;
             ( $elapsed, $status ) = $class->benchmark($handler);
             $elapsed = sprintf '%f', $elapsed;
-            my $av = sprintf '%.3f', ( $elapsed == 0 ? '??' : (1 / $elapsed) );
+            my $av = sprintf '%.3f',
+              ( $elapsed == 0 ? '??' : ( 1 / $elapsed ) );
             my $t = Text::ASCIITable->new;
             $t->setCols( 'Action', 'Time' );
             $t->setColWidth( 'Action', 64, 1 );
@@ -387,7 +414,7 @@ sub handler {
     return $status;
 }
 
-=item $c->prepare($engine)
+=item $c->prepare(@arguments)
 
 Turns the engine-specific request( Apache, CGI ... )
 into a Catalyst context .
@@ -395,21 +422,28 @@ into a Catalyst context .
 =cut
 
 sub prepare {
-    my ( $class, $engine ) = @_;
+    my ( $class, @arguments ) = @_;
 
     my $c = bless {
+        counter => {},
         request => Catalyst::Request->new(
             {
                 arguments  => [],
                 cookies    => {},
                 headers    => HTTP::Headers->new,
                 parameters => {},
+                secure     => 0,
                 snippets   => [],
                 uploads    => {}
             }
         ),
         response => Catalyst::Response->new(
-            { cookies => {}, headers => HTTP::Headers->new, status => 200 }
+            {
+                body    => '',
+                cookies => {},
+                headers => HTTP::Headers->new,
+                status  => 200
+            }
         ),
         stash => {},
         state => 0
@@ -424,11 +458,11 @@ sub prepare {
         $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION );
     }
 
-    $c->prepare_request($engine);
-    $c->prepare_path;
+    $c->prepare_request(@arguments);
+    $c->prepare_connection;
     $c->prepare_headers;
     $c->prepare_cookies;
-    $c->prepare_connection;
+    $c->prepare_path;
     $c->prepare_action;
 
     my $method   = $c->req->method   || '';
@@ -642,7 +676,7 @@ Setup components.
 
 sub setup_components {
     my $self = shift;
-
+    
     # Components
     my $class = ref $self || $self;
     eval <<"";
@@ -670,7 +704,7 @@ sub setup_components {
     my $t = Text::ASCIITable->new( { hide_HeadRow => 1, hide_HeadLine => 1 } );
     $t->setCols('Class');
     $t->setColWidth( 'Class', 75, 1 );
-    $t->addRow($_) for keys %{ $self->components };
+    $t->addRow($_) for sort keys %{ $self->components };
     $self->log->debug( 'Loaded components', $t->draw )
       if ( @{ $t->{tbl_rows} } && $self->debug );
 
@@ -692,8 +726,8 @@ Returns a hashref containing all your data.
 
 sub stash {
     my $self = shift;
-    if ( $_[0] ) {
-        my $stash = $_[1] ? {@_} : $_[0];
+    if (@_) {
+        my $stash = @_ > 1 ? {@_} : $_[0];
         while ( my ( $key, $val ) = each %$stash ) {
             $self->{stash}->{$key} = $val;
         }

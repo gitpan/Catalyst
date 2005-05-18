@@ -4,13 +4,14 @@ use strict;
 use base 'Catalyst::Base';
 use UNIVERSAL::require;
 use Catalyst::Log;
+use Catalyst::Utils;
 use Text::ASCIITable;
 use Path::Class;
-our $CATALYST_SCRIPT_GEN = 3;
+our $CATALYST_SCRIPT_GEN = 4;
 
 __PACKAGE__->mk_classdata($_) for qw/dispatcher engine log/;
 
-our $VERSION = '5.10';
+our $VERSION = '5.20';
 our @ISA;
 
 =head1 NAME
@@ -152,19 +153,53 @@ sub import {
     my $engine     = 'Catalyst::Engine::CGI';
     my $dispatcher = 'Catalyst::Dispatcher';
 
-    # Detect mod_perl
     if ( $ENV{MOD_PERL} ) {
 
-        require mod_perl;
+        my ( $software, $version ) = $ENV{MOD_PERL} =~ /^(\S+)\/(\d+(?:[\.\_]\d+)+)/;
 
-        if ( $ENV{MOD_PERL_API_VERSION} == 2 ) {
-            $engine = 'Catalyst::Engine::Apache::MP20';
+        $version =~ s/_//g;
+        $version =~ s/(\.[^.]+)\./$1/g;
+
+        if ( $software eq 'mod_perl') {
+
+            if ( $version >= 1.99922 ) {
+
+                $engine = 'Catalyst::Engine::Apache::MP20';
+
+                if ( Apache2::Request->require ) {
+                    $engine = 'Catalyst::Engine::Apache::MP20::Apreq';
+                }
+            }
+
+            elsif ( $version >= 1.9901 ) {
+
+                $engine = 'Catalyst::Engine::Apache::MP19';
+
+                if ( Apache::Request->require ) {
+                    $engine = 'Catalyst::Engine::Apache::MP19::Apreq';
+                }
+            }
+
+            elsif ( $version >= 1.24 ) {
+
+                $engine = 'Catalyst::Engine::Apache::MP13';
+
+                if ( Apache::Request->require ) {
+                    $engine = 'Catalyst::Engine::Apache::MP13::Apreq';
+                }
+            }
+
+            else {
+                die( qq/Unsupported mod_perl version: $ENV{MOD_PERL}/ );
+            }
         }
-        elsif ( $mod_perl::VERSION >= 1.99 ) {
-            $engine = 'Catalyst::Engine::Apache::MP19';
+
+        elsif ( $software eq 'Zeus-Perl' ) {
+            $engine = 'Catalyst::Engine::Zeus';
         }
+
         else {
-            $engine = 'Catalyst::Engine::Apache::MP13';
+            die( qq/Unsupported mod_perl: $ENV{MOD_PERL}/ );
         }
     }
 
@@ -218,6 +253,8 @@ sub import {
     # Dispatcher
     $dispatcher = "Catalyst::Dispatcher::$ENV{CATALYST_DISPATCHER}"
       if $ENV{CATALYST_DISPATCHER};
+    my $appdis = $ENV{ uc($caller) . '_DISPATCHER' };
+    $dispatcher = "Catalyst::Dispatcher::$appdis" if $appdis;
 
     $dispatcher->require;
     die qq/Couldn't load dispatcher "$dispatcher", "$@"/ if $@;
@@ -231,28 +268,22 @@ sub import {
     # Engine
     $engine = "Catalyst::Engine::$ENV{CATALYST_ENGINE}"
       if $ENV{CATALYST_ENGINE};
+    my $appeng = $ENV{ uc($caller) . '_ENGINE' };
+    $engine = "Catalyst::Engine::$appeng" if $appeng;
 
     $engine->require;
     die qq/Couldn't load engine "$engine", "$@"/ if $@;
+
     {
         no strict 'refs';
         push @{"$caller\::ISA"}, $engine;
     }
+
     $caller->engine($engine);
     $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
 
     # Find home
-    my $name = $caller;
-    $name =~ s/\:\:/\//g;
-    my $path = $INC{"$name.pm"};
-    my $home = file($path)->absolute->dir;
-    $name =~ /(\w+)$/;
-    my $append = $1;
-    my $subdir = dir($home)->subdir($append);
-    for ( split '/', $name ) { $home = dir($home)->parent }
-    if ( $home =~ /blib$/ ) { $home = dir($home)->parent }
-    elsif ( !-f file( $home, 'Makefile.PL' ) ) { $home = $subdir }
-
+    my $home = Catalyst::Utils::home($caller);
     if ( $caller->debug ) {
         $home
           ? ( -d $home )
@@ -260,8 +291,8 @@ sub import {
           : $caller->log->debug(qq/Home "$home" doesn't exist/)
           : $caller->log->debug(q/Couldn't find home/);
     }
-    $caller->config->{home} = $home;
-    $caller->config->{root} = dir($home)->subdir('root');
+    $caller->config->{home} = $home || '';
+    $caller->config->{root} = defined $home ? dir($home)->subdir('root') : '';
 }
 
 =item $c->engine
@@ -352,8 +383,9 @@ Sebastian Riedel, C<sri@oook.de>
 
 Andy Grundman, Andrew Ford, Andrew Ruthven, Autrijus Tang, Christian Hansen,
 Christopher Hicks, Dan Sully, Danijel Milicevic, David Naughton,
-Gary Ashton Jones, Jesse Sheidlower, Jody Belka, Johan Lindstrom, Leon Brocard,
-Marcus Ramberg, Tatsuhiko Miyagawa and all the others who've helped.
+Gary Ashton Jones, Geoff Richards, Jesse Sheidlower, Jody Belka,
+Johan Lindstrom, Juan Camacho, Leon Brocard, Marcus Ramberg,
+Tatsuhiko Miyagawa and all the others who've helped.
 
 =head1 LICENSE
 

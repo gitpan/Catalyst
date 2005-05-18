@@ -1,12 +1,24 @@
 package Catalyst::Engine::Apache;
 
 use strict;
-use base 'Catalyst::Engine';
 
-use URI;
-use URI::http;
+# 1.27     MP13
+# 1.28     MP13
+# 1.29     MP13
+# 1.2901   MP13
+# 1.30     MP13 TBR
 
-__PACKAGE__->mk_accessors(qw/apache/);
+# 1.9901   MP19
+# 1.9920   MP19
+# 1.999020 MP19 RC3
+# 1.999021 MP19 RC4
+
+# 1.999022 MP20 RC5
+# 1.999023 MP20 RC6
+
+1;
+
+__END__
 
 =head1 NAME
 
@@ -18,120 +30,7 @@ See L<Catalyst>.
 
 =head1 DESCRIPTION
 
-This is a base class engine specialized for Apache (i.e. for mod_perl).
-
-=head1 METHODS
-
-=over 4
-
-=item $c->apache
-
-Returns an C<Apache::Request> object.
-
-=back
-
-=head1 OVERLOADED METHODS
-
-This class overloads some methods from C<Catalyst::Engine>.
-
-=over 4
-
-=item $c->finalize_body
-
-=cut
-
-sub finalize_body {
-    my $c = shift;
-    $c->apache->print( $c->response->body );
-}
-
-=item $c->prepare_body
-
-=cut
-
-sub prepare_body {
-    my $c = shift;
-
-    my $length = $c->request->content_length;
-    my ( $buffer, $content );
-
-    while ($length) {
-
-        $c->apache->read( $buffer, ( $length < 8192 ) ? $length : 8192 );
-
-        $length  -= length($buffer);
-        $content .= $buffer;
-    }
-    
-    $c->request->body($content);
-}
-
-=item $c->prepare_connection
-
-=cut
-
-sub prepare_connection {
-    my $c = shift;
-    $c->request->hostname( $c->apache->connection->remote_host );
-    $c->request->address( $c->apache->connection->remote_ip );
-}
-
-=item $c->prepare_headers
-
-=cut
-
-sub prepare_headers {
-    my $c = shift;
-    $c->request->method( $c->apache->method );
-    $c->request->header( %{ $c->apache->headers_in } );
-}
-
-=item $c->prepare_parameters
-
-=cut
-
-sub prepare_parameters {
-    my $c = shift;
-
-    my @params;
-    
-    $c->apache->param->do( sub {
-        my ( $field, $value ) = @_;
-        push( @params, $field, $value );
-        return 1;    
-    });
-    
-    $c->req->_assign_values( $c->req->parameters, \@params );
-}
-
-=item $c->prepare_path
-
-=cut
-
-# XXX needs fixing, only work with <Location> directive,
-# not <Directory> directive
-sub prepare_path {
-    my $c = shift;
-    $c->request->path( $c->apache->uri );
-    my $loc = $c->apache->location;
-    no warnings 'uninitialized';
-    $c->req->{path} =~ s/^($loc)?\///;
-    my $base = URI->new;
-    $base->scheme( $ENV{HTTPS} ? 'https' : 'http' );
-    $base->host( $c->apache->hostname );
-    $base->port( $c->apache->get_server_port );
-    my $path = $c->apache->location;
-    $base->path( $path =~ /\/$/ ? $path : "$path/" );
-    $c->request->base( $base->as_string );
-}
-
-=item $c->run
-
-=cut
-
-sub run { }
-
-=back
+This class will load the correct MP Engine.
 
 =head1 SEE ALSO
 
@@ -148,5 +47,3 @@ This program is free software, you can redistribute it and/or modify it under
 the same terms as Perl itself.
 
 =cut
-
-1;

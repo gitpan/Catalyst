@@ -8,6 +8,7 @@ use IO::File   ();
 
 __PACKAGE__->mk_accessors(qw/filename size tempname type/);
 
+sub new { shift->SUPER::new( ref( $_[0] ) ? $_[0] : {@_} ) }
 
 =head1 NAME
 
@@ -20,6 +21,7 @@ Catalyst::Request::Upload - Catalyst Request Upload Class
     $upload->filename;
     $upload->link_to;
     $upload->size;
+    $upload->slurp;
     $upload->tempname;
     $upload->type;
 
@@ -36,11 +38,7 @@ to the upload data.
 
 =item $upload->new
 
-Constructor. Normally only for engine use.
-
-=cut 
-
-sub new { shift->SUPER::new( ref( $_[0] ) ? $_[0] : {@_} ) }
+simple constructor.
 
 =item $upload->copy_to
 
@@ -91,6 +89,31 @@ sub link_to {
 =item $upload->size
 
 Contains size of the file in bytes.
+
+=item $upload->slurp
+
+Returns a scalar containing contents of tempname.
+
+=cut
+
+sub slurp {
+    my ( $self, $layer ) = @_;
+
+    unless ( $layer ) {
+        $layer = ':raw';
+    }
+
+    my $content = undef;
+    my $handle  = $self->fh;
+
+    binmode( $handle, $layer );
+
+    while ( $handle->sysread( my $buffer, 8192 ) ) {
+        $content .= $buffer;
+    }
+
+    return $content;
+}
 
 =item $upload->tempname
 
