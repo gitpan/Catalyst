@@ -162,12 +162,11 @@ sub execute {
     eval {
         if ( $c->debug )
         {
-            my ( $elapsed, @state ) =
-              $c->benchmark( $code, $class, $c, @{ $c->req->args } );
+            my ( $elapsed, @state ) = $c->benchmark( $code, $class, $c, @{ $c->req->args } );
             push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
             $c->state(@state);
         }
-        else { $c->state( &$code( $class, $c, @{ $c->req->args } ) ) }
+        else { $c->state( &$code( $class, $c, @{ $c->req->args } ) || 0 ) }
     };
 
     if ( my $error = $@ ) {
@@ -467,10 +466,9 @@ sub prepare {
 
     my $method   = $c->req->method   || '';
     my $path     = $c->req->path     || '';
-    my $hostname = $c->req->hostname || '';
     my $address  = $c->req->address  || '';
 
-    $c->log->debug(qq/"$method" request for "$path" from $hostname($address)/)
+    $c->log->debug(qq/"$method" request for "$path" from $address/)
       if $c->debug;
 
     if ( $c->request->method eq 'POST' and $c->request->content_length ) {
