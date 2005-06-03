@@ -4,7 +4,77 @@ use strict;
 use base 'Class::Accessor::Fast';
 use Data::Dumper;
 
-$Data::Dumper::Terse = 1;
+our %LEVELS = ();
+
+__PACKAGE__->mk_accessors('level');
+
+{
+    my @levels = qw[ debug info warn error fatal ];
+
+    for ( my $i = 0 ; $i < @levels ; $i++ ) {
+
+        my $name  = $levels[$i];
+        my $level = 1 << $i;
+
+        $LEVELS{$name} = $level;
+
+        no strict 'refs';
+
+        *{$name} = sub {
+            my $self = shift;
+
+            if ( $self->{level} & $level ) {
+                $self->_log( $name, @_ );
+            }
+        };
+
+        *{"is_$name"} = sub {
+            my $self = shift;
+            return $self->{level} & $level;
+        };
+    }
+}
+
+sub new {
+    my $class = shift;
+    my $self  = $class->SUPER::new;
+    $self->levels( scalar(@_) ? @_ : keys %LEVELS );
+    return $self;
+}
+
+sub levels {
+    my ( $self, @levels ) = @_;
+    $self->level(0);
+    $self->enable(@levels);
+}
+
+sub enable {
+    my ( $self, @levels ) = @_;
+    $self->{level} |= $_ for map { $LEVELS{$_} } @levels;
+}
+
+sub disable {
+    my ( $self, @levels ) = @_;
+    $self->{level} &= ~$_ for map { $LEVELS{$_} } @levels;
+}
+
+sub _dump {
+    my $self = shift;
+    local $Data::Dumper::Terse = 1;
+    $self->info( Dumper( $_[0] ) );
+}
+
+sub _log {
+    my $self    = shift;
+    my $level   = shift;
+    my $time    = localtime(time);
+    my $message = join( "\n", @_ );
+    printf( STDERR "[%s] [catalyst] [%s] %s\n", $time, $level, $message );
+}
+
+1;
+
+__END__
 
 =head1 NAME
 
@@ -13,76 +83,100 @@ Catalyst::Log - Catalyst Log Class
 =head1 SYNOPSIS
 
     $log = $c->log;
-    $log->debug(@message);
-    $log->error(@message);
-    $log->info(@message);
-    $log->warn(@message);
+    $log->debug($message);
+    $log->info($message);
+    $log->warn($message);
+    $log->error($message);
+    $log->fatal($message);
+
+    if ( $log->is_debug ) {
+         # expensive debugging
+    }
+
 
 See L<Catalyst>.
 
 =head1 DESCRIPTION
 
-This module provides the default, simple logging functionality for 
+This module provides the default, simple logging functionality for
 Catalyst.
-If you want something different set C<$c->log> in your application 
+If you want something different set C<$c->log> in your application
 module, e.g.:
 
     $c->log( MyLogger->new );
 
 Your logging object is expected to provide the interface described here.
 
+=head1 LOG LEVELS
+
+=over 4
+
+=item debug
+
+    $log->is_debug;
+    $log->debug($message);
+
+=item info
+
+    $log->is_info;
+    $log->info($message);
+
+=item warn
+
+    $log->is_warn;
+    $log->warn($message);
+
+=item error
+
+    $log->is_error;
+    $log->error($message);
+
+=item fatal
+
+    $log->is_fatal;
+    $log->fatal($message);
+
+=back
 
 =head1 METHODS
 
 =over 4
 
-=item $log->debug(@message)
+=item new
 
-Logs a debugging message.
+Constructor, defaults to enable all levels unless levels a provieded in
+arguments.
 
-=cut
+    $log = Catalyst::Log->new;
+    $log = Catalyst::Log->new( 'warn', 'error', 'fatal' );
 
-sub debug { shift->_format( 'debug', @_ ) }
+=item levels
 
-=item $log->error(@message)
+Set log levels
 
-Logs an error message.
+    $log->levels( 'warn', 'error', 'fatal' );
 
-=cut
+=item enable
 
-sub error { shift->_format( 'error', @_ ) }
+Enable log levels
 
-=item $log->info(@message)
+    $log->enable( 'warn', 'error' );
 
-Logs an informational message.
+=item disable
 
-=cut
+Disable log levels
 
-sub info { shift->_format( 'info', @_ ) }
+    $log->disable( 'warn', 'error' );
 
-=item $log->warn(@message)
+=item is_debug
+=item is_error
+=item is_fatal
+=item is_info
+=item is_warn
 
-Logs a warning message.
-
-=cut
-
-sub warn { shift->_format( 'warn', @_ ) }
-
-sub _format {
-    my $class   = shift;
-    my $level   = shift;
-    my $time    = localtime(time);
-    my $message = join( "\n", @_ );
-    printf( STDERR "[%s] [catalyst] [%s] %s\n", $time, $level, $message );
-}
+Is the log level active?
 
 =back
-
-=cut
-
-# Private - Logs a Data::Dumper of reference.
-sub _dump { shift->_format( 'dump', Dumper( $_[0] ) ) }
-
 
 =head1 SEE ALSO
 
@@ -92,10 +186,11 @@ L<Catalyst>.
 
 Sebastian Riedel, C<sri@cpan.org>
 Marcus Ramberg, C<mramberg@cpan.org>
+Christian Hansen, C<ch@ngmedia.com>
 
 =head1 COPYRIGHT
 
-This program is free software, you can redistribute it and/or modify 
+This program is free software, you can redistribute it and/or modify
 it under the same terms as Perl itself.
 
 =cut
