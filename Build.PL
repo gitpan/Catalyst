@@ -14,12 +14,12 @@ my $build = Module::Build->new(
         'File::Temp'                        => 0.14,
         'HTTP::Daemon'                      => 0,
         'HTML::Entities'                    => 0,
-        'HTTP::Headers'                     => 0,
+        'HTTP::Headers'                     => 1.59,
         'HTTP::Request'                     => 0,
         'HTTP::Response'                    => 0,
         'LWP::UserAgent'                    => 0,
         'Module::Pluggable::Fast'           => 0.16,
-        'Path::Class'                       => 0,
+        'Path::Class'                       => 0.09,
         'Template'                          => 0,
         'Text::ASCIITable'                  => 0,
         'Tree::Simple'                      => 0,
@@ -27,6 +27,7 @@ my $build = Module::Build->new(
         'URI'                               => 0,
     },
     create_makefile_pl => 'passthrough',
+    create_readme => 1,
     script_files => [ glob('script/*') ],
     test_files   => [
         glob('t/*.t'), glob('t/*/*.t'), glob('t/*/*/*.t'), glob('t/*/*/*/*.t')
@@ -42,9 +43,6 @@ print(
     " again!\n"
 );
 print( '*' x 80, "\n" );
-
-eval "use mod_perl; use Apache::Request";
-print qq/Install "mod_perl" and "Apache::Request" for Apache support.\n/ if $@;
 
 eval "use FCGI";
 print qq/Install "FCGI" for FastCGI support.\n/ if $@;

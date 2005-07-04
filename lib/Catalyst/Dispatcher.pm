@@ -2,6 +2,7 @@ package Catalyst::Dispatcher;
 
 use strict;
 use base 'Class::Data::Inheritable';
+use Catalyst::Exception;
 use Catalyst::Utils;
 use Text::ASCIITable;
 use Tree::Simple;
@@ -23,6 +24,18 @@ See L<Catalyst>.
 
 =over 4
 
+=item $c->detach($command)
+
+Like C<forward> but doesn't return.
+
+=cut
+
+sub detach {
+    my ( $c, $command ) = @_;
+    $c->forward($command) if $command;
+    die $Catalyst::Engine::DETACH;
+}
+
 =item $c->dispatch
 
 Dispatch request to actions.
@@ -38,8 +51,8 @@ sub dispatch {
 
     unless ($namespace) {
         if ( my $result = $c->get_action($action) ) {
-            $namespace =
-              Catalyst::Utils::class2prefix( $result->[0]->[0]->[0] );
+            $namespace = Catalyst::Utils::class2prefix( $result->[0]->[0]->[0],
+                $c->config->{case_sensitive} );
         }
     }
 
@@ -91,10 +104,13 @@ sub dispatch {
     }
 }
 
-=item $c->forward($command)
+=item $c->forward( $command [, \@arguments ] )
 
 Forward processing to a private action or a method from a class.
 If you define a class without method it will default to process().
+also takes an optional arrayref containing arguments to be passed
+to the new function. $c->req->args will be reset upon returning 
+from the function.
 
     $c->forward('/foo');
     $c->forward('index');
@@ -114,6 +130,7 @@ sub forward {
 
     my $caller    = caller(0);
     my $namespace = '/';
+    my $arguments = ( ref( $_[-1] ) eq 'ARRAY' ) ? pop(@_) : $c->req->args;
 
     if ( $command =~ /^\// ) {
         $command =~ /^\/(.*)\/(\w+)$/;
@@ -122,41 +139,33 @@ sub forward {
         $command =~ s/^\///;
     }
 
-    else { $namespace = Catalyst::Utils::class2prefix($caller) || '/' }
+    else {
+        $namespace =
+          Catalyst::Utils::class2prefix( $caller, $c->config->{case_sensitive} )
+          || '/';
+    }
 
     my $results = $c->get_action( $command, $namespace );
 
     unless ( @{$results} ) {
-        my $class = $command || '';
-        my $path = $class . '.pm';
-        $path =~ s/::/\//g;
-
-        unless ( $INC{$path} ) {
-            my $error =
-              qq/Couldn't forward to "$class". Invalid or not loaded./;
+        
+        unless ( $c->components->{$command} ) {
+            my $error = qq/Couldn't forward to command "$command". Invalid action or component./;
             $c->error($error);
             $c->log->debug($error) if $c->debug;
             return 0;
         }
-
-        unless ( UNIVERSAL::isa( $class, 'Catalyst::Base' ) ) {
-            my $error =
-              qq/Can't forward to "$class". Class is not a Catalyst component./;
-            $c->error($error);
-            $c->log->debug($error) if $c->debug;
-            return 0;
-        }
-
+        
+        my $class  = $command;
         my $method = shift || 'process';
 
-        if ( my $code = $class->can($method) ) {
+        if ( my $code = $c->components->{$class}->can($method) ) {
             $c->actions->{reverse}->{"$code"} = "$class->$method";
             $results = [ [ [ $class, $code ] ] ];
         }
 
         else {
-            my $error =
-              qq/Couldn't forward to "$class". Does not implement "$method"/;
+            my $error = qq/Couldn't forward to "$class". Does not implement "$method"/;
             $c->error($error);
             $c->log->debug($error)
               if $c->debug;
@@ -164,6 +173,8 @@ sub forward {
         }
 
     }
+    
+    local $c->request->{arguments} = [ @{ $arguments } ];
 
     for my $result ( @{$results} ) {
         $c->execute( @{ $result->[0] } );
@@ -258,7 +269,9 @@ Set an action in a given namespace.
 sub set_action {
     my ( $c, $method, $code, $namespace, $attrs ) = @_;
 
-    my $prefix = Catalyst::Utils::class2prefix($namespace) || '';
+    my $prefix =
+      Catalyst::Utils::class2prefix( $namespace, $c->config->{case_sensitive} )
+      || '';
     my %flags;
 
     for my $attr ( @{$attrs} ) {
@@ -362,10 +375,10 @@ sub setup_actions {
 
     # We use a tree
     $self->tree( Tree::Simple->new( 0, Tree::Simple->ROOT ) );
-    
+
     for my $comp ( keys %{ $self->components } ) {
-    
-        # We only setup components that inherit from Catalyst::Base  
+
+        # We only setup components that inherit from Catalyst::Base
         next unless $comp->isa('Catalyst::Base');
 
         for my $action ( @{ Catalyst::Utils::reflect_actions($comp) } ) {
@@ -402,7 +415,7 @@ sub setup_actions {
         }
 
     }
-    
+
     return unless $self->debug;
 
     my $actions  = $self->actions;
@@ -426,7 +439,7 @@ sub setup_actions {
     };
 
     $walker->( $walker, $self->tree, '' );
-    $self->log->debug( 'Loaded private actions', $privates->draw )
+    $self->log->debug( "Loaded private actions:\n" . $privates->draw )
       if ( @{ $privates->{tbl_rows} } );
 
     my $publics = Text::ASCIITable->new;
@@ -441,7 +454,7 @@ sub setup_actions {
         $publics->addRow( "/$plain", $reverse );
     }
 
-    $self->log->debug( 'Loaded public actions', $publics->draw )
+    $self->log->debug( "Loaded public actions:\n" . $publics->draw )
       if ( @{ $publics->{tbl_rows} } );
 
     my $regexes = Text::ASCIITable->new;
@@ -456,7 +469,7 @@ sub setup_actions {
         $regexes->addRow( $regex, $reverse );
     }
 
-    $self->log->debug( 'Loaded regex actions', $regexes->draw )
+    $self->log->debug( "Loaded regex actions:\n" . $regexes->draw )
       if ( @{ $regexes->{tbl_rows} } );
 }
 

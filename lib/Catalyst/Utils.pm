@@ -2,6 +2,8 @@ package Catalyst::Utils;
 
 use strict;
 use attributes ();
+use Catalyst::Exception;
+use File::Spec;
 use HTTP::Request;
 use Path::Class;
 use URI;
@@ -79,7 +81,22 @@ sub class2classsuffix {
     return $class;
 }
 
-=item class2prefix($class);
+=item class2env($class);
+
+Returns the enviroment name for class.
+
+    MyApp becomes MYAPP
+    My::App becomes MY_APP
+
+=cut
+
+sub class2env {
+    my $class = shift || '';
+    $class =~ s/\:\:/_/g;
+    return uc($class);
+}
+
+=item class2prefix( $class, $case );
 
 Returns the prefix for class.
 
@@ -89,12 +106,43 @@ Returns the prefix for class.
 
 sub class2prefix {
     my $class = shift || '';
+    my $case  = shift || 0;
     my $prefix;
     if ( $class =~ /^.*::([MVC]|Model|View|Controller)?::(.*)$/ ) {
-        $prefix = lc $2;
+        $prefix = $case ? $2 : lc $2;
         $prefix =~ s/\:\:/\//g;
     }
     return $prefix;
+}
+
+=item class2tempdir( $class [, $create ] );
+
+Returns a tempdir for class. If create is true it will try to create the path.
+
+    My::App becomes /tmp/my/app
+    My::App::C::Foo::Bar becomes /tmp/my/app/c/foo/bar
+
+=cut
+
+sub class2tempdir {
+    my $class  = shift || '';
+    my $create = shift || 0;
+    my @parts  = split '::', lc $class;
+
+    my $tmpdir = dir( File::Spec->tmpdir, @parts )->cleanup;
+
+    if ( $create && ! -e $tmpdir ) {
+
+        eval { $tmpdir->mkpath };
+
+        if ( $@ ) {
+            Catalyst::Exception->throw(
+                message => qq/Couldn't create tmpdir '$tmpdir', "$@"/
+            );
+        }
+    }
+
+    return $tmpdir->stringify;
 }
 
 =item home($class)
@@ -118,6 +166,12 @@ sub home {
             && !-f file( $home, 'Build.PL' ) )
         {
             $home = $subdir;
+        }
+        # clean up relative path:
+        # MyApp/script/.. -> MyApp
+        my ($lastdir) = $home->dir_list( -1, 1 );
+        if ( $lastdir eq '..' ) {
+            $home = dir($home)->parent->parent;
         }
     }
     return $home;
@@ -148,7 +202,13 @@ sub reflect_actions {
     my $class   = shift;
     my $actions = [];
     eval '$actions = $class->_action_cache';
-    die qq/Couldn't reflect actions of component "$class", "$@"/ if $@;
+    
+    if ( $@ ) {
+        Catalyst::Exception->throw(
+            message => qq/Couldn't reflect actions of component "$class", "$@"/
+        );
+    }
+    
     return $actions;
 }
 

@@ -1,17 +1,19 @@
 package Catalyst;
 
 use strict;
-use base 'Catalyst::Base';
+use base qw[ Catalyst::Base Catalyst::Setup ];
 use UNIVERSAL::require;
+use Catalyst::Exception;
 use Catalyst::Log;
 use Catalyst::Utils;
+use NEXT;
 use Text::ASCIITable;
 use Path::Class;
 our $CATALYST_SCRIPT_GEN = 4;
 
-__PACKAGE__->mk_classdata($_) for qw/dispatcher engine log/;
+__PACKAGE__->mk_classdata($_) for qw/arguments dispatcher engine log/;
 
-our $VERSION = '5.23';
+our $VERSION = '5.30';
 our @ISA;
 
 =head1 NAME
@@ -25,15 +27,15 @@ Catalyst - The Elegant MVC Web Application Framework
     cd MyApp
 
     # add models, views, controllers
-    script/create.pl model Something
-    script/create.pl view Stuff
-    script/create.pl controller Yada
+    script/myapp_create.pl model Something
+    script/myapp_create.pl view Stuff
+    script/myapp_create.pl controller Yada
 
     # built in testserver
-    script/server.pl
+    script/myapp_server.pl
 
     # command line interface
-    script/test.pl /yada
+    script/myapp_test.pl /yada
 
 
     use Catalyst;
@@ -61,9 +63,6 @@ Catalyst - The Elegant MVC Web Application Framework
 See also L<Catalyst::Manual::Intro>
 
 =head1 DESCRIPTION
-
-Catalyst is based upon L<Maypole>, which you should consider for smaller
-projects.
 
 The key concept of Catalyst is DRY (Don't Repeat Yourself).
 
@@ -126,202 +125,21 @@ Returns a hashref containing your applications settings.
 =cut
 
 sub import {
-    my ( $self, @options ) = @_;
+    my ( $class, @arguments ) = @_;
+    
+    # We have to limit $class to Catalyst to avoid pushing Catalyst upon every
+    # callers @ISA.
+    return unless $class eq 'Catalyst';
+
     my $caller = caller(0);
 
-    # Prepare inheritance
-    unless ( $caller->isa($self) ) {
+    unless ( $caller->isa('Catalyst') ) {
         no strict 'refs';
-        push @{"$caller\::ISA"}, $self;
+        push @{"$caller\::ISA"}, $class;
     }
 
-    if ( $caller->engine ) {
-        return;    # Catalyst is already initialized
-    }
-
-    unless ( $caller->log ) {
-        $caller->log( Catalyst::Log->new );
-    }
-
-    # Debug?
-    if ( $ENV{CATALYST_DEBUG} || $ENV{ uc($caller) . '_DEBUG' } ) {
-        no strict 'refs';
-        *{"$caller\::debug"} = sub { 1 };
-        $caller->log->debug('Debug messages enabled');
-    }
-
-    my $engine     = 'Catalyst::Engine::CGI';
-    my $dispatcher = 'Catalyst::Dispatcher';
-
-    if ( $ENV{MOD_PERL} ) {
-
-        my ( $software, $version ) = $ENV{MOD_PERL} =~ /^(\S+)\/(\d+(?:[\.\_]\d+)+)/;
-
-        $version =~ s/_//g;
-        $version =~ s/(\.[^.]+)\./$1/g;
-
-        if ( $software eq 'mod_perl') {
-
-            if ( $version >= 1.99922 ) {
-
-                $engine = 'Catalyst::Engine::Apache::MP20';
-
-                if ( Apache2::Request->require ) {
-                    $engine = 'Catalyst::Engine::Apache::MP20::Apreq';
-                }
-            }
-
-            elsif ( $version >= 1.9901 ) {
-
-                $engine = 'Catalyst::Engine::Apache::MP19';
-
-                if ( Apache::Request->require ) {
-                    $engine = 'Catalyst::Engine::Apache::MP19::Apreq';
-                }
-            }
-
-            elsif ( $version >= 1.24 ) {
-
-                $engine = 'Catalyst::Engine::Apache::MP13';
-
-                if ( Apache::Request->require ) {
-                    $engine = 'Catalyst::Engine::Apache::MP13::Apreq';
-                }
-            }
-
-            else {
-                die( qq/Unsupported mod_perl version: $ENV{MOD_PERL}/ );
-            }
-        }
-
-        elsif ( $software eq 'Zeus-Perl' ) {
-            $engine = 'Catalyst::Engine::Zeus';
-        }
-
-        else {
-            die( qq/Unsupported mod_perl: $ENV{MOD_PERL}/ );
-        }
-    }
-
-    $caller->log->info( "You are running an old helper script! "
-          . "Please update your scripts by regenerating the "
-          . "application and copying over the new scripts." )
-      if ( $ENV{CATALYST_SCRIPT_GEN}
-        && ( $ENV{CATALYST_SCRIPT_GEN} < $CATALYST_SCRIPT_GEN ) );
-
-    # Process options
-    my @plugins;
-    foreach (@options) {
-
-        if (/^\-Debug$/) {
-            next if $caller->debug;
-            no strict 'refs';
-            *{"$caller\::debug"} = sub { 1 };
-            $caller->log->debug('Debug messages enabled');
-        }
-
-        elsif (/^-Dispatcher=(.*)$/) {
-            $dispatcher = "Catalyst::Dispatcher::$1";
-        }
-
-        elsif (/^-Engine=(.*)$/) { $engine = "Catalyst::Engine::$1" }
-        elsif (/^-.*$/) { $caller->log->error(qq/Unknown flag "$_"/) }
-
-        else {
-            my $plugin = "Catalyst::Plugin::$_";
-
-            $plugin->require;
-
-            if ($@) { die qq/Couldn't load plugin "$plugin", "$@"/ }
-            else {
-                push @plugins, $plugin;
-                no strict 'refs';
-                push @{"$caller\::ISA"}, $plugin;
-            }
-        }
-
-    }
-
-    # Plugin table
-    my $t = Text::ASCIITable->new( { hide_HeadRow => 1, hide_HeadLine => 1 } );
-    $t->setCols('Class');
-    $t->setColWidth( 'Class', 75, 1 );
-    $t->addRow($_) for @plugins;
-    $caller->log->debug( 'Loaded plugins', $t->draw )
-      if ( @plugins && $caller->debug );
-
-    # Dispatcher
-    $dispatcher = "Catalyst::Dispatcher::$ENV{CATALYST_DISPATCHER}"
-      if $ENV{CATALYST_DISPATCHER};
-    my $appdis = $ENV{ uc($caller) . '_DISPATCHER' };
-    $dispatcher = "Catalyst::Dispatcher::$appdis" if $appdis;
-
-    $dispatcher->require;
-    die qq/Couldn't load dispatcher "$dispatcher", "$@"/ if $@;
-    {
-        no strict 'refs';
-        push @{"$caller\::ISA"}, $dispatcher;
-    }
-    $caller->dispatcher($dispatcher);
-    $caller->log->debug(qq/Loaded dispatcher "$dispatcher"/) if $caller->debug;
-
-    # Engine
-    $engine = "Catalyst::Engine::$ENV{CATALYST_ENGINE}"
-      if $ENV{CATALYST_ENGINE};
-    my $appeng = $ENV{ uc($caller) . '_ENGINE' };
-    $engine = "Catalyst::Engine::$appeng" if $appeng;
-
-    $engine->require;
-    die qq/Couldn't load engine "$engine", "$@"/ if $@;
-
-    {
-        no strict 'refs';
-        push @{"$caller\::ISA"}, $engine;
-    }
-
-    $caller->engine($engine);
-    $caller->log->debug(qq/Loaded engine "$engine"/) if $caller->debug;
-
-    # Find home
-    my $home = Catalyst::Utils::home($caller);
-
-    if ( my $h = $ENV{CATALYST_HOME} ) {
-
-        $home = $h if -d $h;
-
-        unless ( -e _ ) {
-            $caller->log->warn(qq/CATALYST_HOME does not exist "$h"/);
-        }
-
-        unless ( -e _ && -d _ ) {
-            $caller->log->warn(qq/CATALYST_HOME is not a directory "$h"/);
-        }
-    }
-
-    if ( my $h = $ENV{ uc($caller) . '_HOME' } ) {
-
-        $home = $h if -d $h;
-
-        unless ( -e _ ) {
-            my $e = uc($caller) . '_HOME';
-            $caller->log->warn(qq/$e does not exist "$h"/)
-        }
-
-        unless ( -e _ && -d _ ) {
-            my $e = uc($caller) . '_HOME';
-            $caller->log->warn(qq/$e is not a directory "$h"/);
-        }
-    }
-    
-    if ( $caller->debug ) {
-        $home
-          ? ( -d $home )
-          ? $caller->log->debug(qq/Found home "$home"/)
-          : $caller->log->debug(qq/Home "$home" doesn't exist/)
-          : $caller->log->debug(q/Couldn't find home/);
-    }
-    $caller->config->{home} = $home || '';
-    $caller->config->{root} = defined $home ? dir($home)->subdir('root') : '';
+    $caller->arguments( [ @arguments ] );
+    $caller->setup_home;
 }
 
 =item $c->engine
@@ -353,19 +171,39 @@ Classdata accessor/mutator will be created, class loaded and instantiated.
 sub plugin {
     my ( $class, $name, $plugin, @args ) = @_;
     $plugin->require;
-    my $error = $UNIVERSAL::require::ERROR;
-    die qq/Couldn't load instant plugin "$plugin", "$error"/ if $error;
+
+    if ( my $error = $UNIVERSAL::require::ERROR ) {
+        Catalyst::Exception->throw(
+            message => qq/Couldn't load instant plugin "$plugin", "$error"/
+        );
+    }
+
     eval { $plugin->import };
     $class->mk_classdata($name);
     my $obj;
     eval { $obj = $plugin->new(@args) };
-    die qq/Couldn't instantiate instant plugin "$plugin", "$@"/ if $@;
+
+    if ( $@ ) {
+        Catalyst::Exception->throw(
+            message => qq/Couldn't instantiate instant plugin "$plugin", "$@"/
+        );
+    }
+
     $class->$name($obj);
     $class->log->debug(qq/Initialized instant plugin "$plugin" as "$name"/)
       if $class->debug;
 }
 
 =back
+
+=head1 CASE SENSITIVITY
+
+By default Catalyst is not case sensitive, so C<MyApp::C::FOO::Bar> becomes
+C</foo/bar>.
+
+But you can activate case sensitivity with a config parameter.
+
+    MyApp->config->{case_sensitive} = 1;
 
 =head1 LIMITATIONS
 

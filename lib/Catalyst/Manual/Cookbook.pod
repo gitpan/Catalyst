@@ -15,13 +15,13 @@ placing a C<die()> call in the C<end> action.
 
      sub end : Private {
          my ( $self, $c ) = @_;
-         die "testing";
+         die "forced debug";
      }
 
 If you're tired of removing and adding this all the time, you
 can easily add a condition. For example:
 
-  die "Testing" if $c->params->{dump_info};
+  die "force debug" if $c->req->params->{dump_info};
 
 =head2 Disable statistics
 
@@ -67,7 +67,9 @@ Just use Catalyst::Model::CDBI::CRUD as your base class.
     1;
 
 Modify the $c->form() parameters to match your needs, and don't forget to copy
-the templates. ;)
+the templates into the template root. Can't find the templates? They were in the
+CRUD model distribution, so you can do B<look Catalyst::Model::CDBI::CRUD> from 
+the CPAN shell to find them.
 
 =head2 Single file upload with Catalyst
 
@@ -188,7 +190,7 @@ We'll discuss the first variant for now:
 
 To log in a user you might use an action like this:
 
-    sub 'login' : Local {
+    sub login : Local {
         my ($self, $c) = @_;
         if ($c->req->params->{username}) {
             $c->session_login($c->req->params->{username}, 
@@ -198,6 +200,10 @@ To log in a user you might use an action like this:
             }
         }
     }
+
+This action should not go in your MyApp class...if it does, it will
+conflict with the built-in method of the same name.  Instead, put it
+in a Controller class.
 
 $c->req->params->{username} and $c->req->params->{password} are html 
 form parameters from a login form. If login succeeds, then 
@@ -277,6 +283,21 @@ to be.
 
 And this is all you need to do. 
 
+=head2 Pass-through login (and other actions)
+
+An easy way of having assorted actions that occur during the processing of
+a request that are orthogonal to its actual purpose - logins, silent
+commands etc. Provide actions for these, but when they're required for
+something else fill e.g. a form variable __login and have a sub begin like so:
+
+sub begin : Private {
+  my ($self, $c) = @_;
+  foreach my $action (qw/login docommand foo bar whatever/) {
+    if ($c->req->params->{"__${action}"}) {
+      $c->forward($action);
+    }
+  }
+}
 
 =head2 How to use Catalyst without mod_perl
 
@@ -339,6 +360,14 @@ authentication, authorization, and access check phases.
 
 For more information see the FastCGI documentation, the C<FCGI> module 
 and L<http://www.fastcgi.com/>.
+
+=head1 Forwarding with a parameter
+
+Sometimes you want to pass along arguments when forwarding to another
+action. This can easily be accomplished like this:
+ 
+  $c->req->args([qw/arg1 arg2 arg3/]);
+  $c->forward('/wherever');
 
 =head1 AUTHOR
 

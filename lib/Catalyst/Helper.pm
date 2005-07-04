@@ -9,6 +9,7 @@ use IO::File;
 use FindBin;
 use Template;
 use Catalyst;
+use Catalyst::Exception;
 
 my %cache;
 
@@ -63,7 +64,7 @@ sub mk_app {
     $self->{appprefix} = lc $self->{dir};
     $self->{appprefix} =~ s/-/_/g;
     $self->{startperl} = $Config{startperl};
-    $self->{scriptgen} = $Catalyst::CATALYST_SCRIPT_GEN;
+    $self->{scriptgen} = $Catalyst::CATALYST_SCRIPT_GEN || 4;
     $self->{author}    = $self->{author} = $ENV{'AUTHOR'}
       || eval { @{ [ getpwuid($<) ] }[6] }
       || 'Catalyst developer';
@@ -97,12 +98,18 @@ sub mk_component {
       || eval { @{ [ getpwuid($<) ] }[6] }
       || 'A clever guy';
     $self->{base} = File::Spec->catdir( $FindBin::Bin, '..' );
-    unless ( $_[0] =~ /^model|m|view|v|controller|c\$/i ) {
+    unless ( $_[0] =~ /^(?:model|m|view|v|controller|c)$/i ) {
         my $helper = shift;
         my @args   = @_;
         my $class  = "Catalyst::Helper::$helper";
         eval "require $class";
-        die qq/Couldn't load helper "$class", "$@"/ if $@;
+        
+        if ( $@ ) {
+            Catalyst::Exception->throw( 
+                message => qq/Couldn't load helper "$class", "$@"/
+            );
+        }
+        
         if ( $class->can('mk_stuff') ) {
             return 1 unless $class->mk_stuff( $self, @args );
         }
@@ -145,7 +152,13 @@ sub mk_component {
             $comp = 'Controller' if $type eq 'C';
             my $class = "Catalyst::Helper::$comp\::$helper";
             eval "require $class";
-            die qq/Couldn't load helper "$class", "$@"/ if $@;
+            
+            if ( $@ ) {
+                Catalyst::Exception->throw( 
+                    message => qq/Couldn't load helper "$class", "$@"/
+                );
+            }            
+        
             if ( $class->can('mk_compclass') ) {
                 return 1 unless $class->mk_compclass( $self, @args );
             }
@@ -178,11 +191,14 @@ sub mk_dir {
         print qq/ exists "$dir"\n/;
         return 0;
     }
-    if ( mkpath $dir) {
+    if ( mkpath [$dir] ) {
         print qq/created "$dir"\n/;
         return 1;
     }
-    die qq/Couldn't create "$dir", "$!"/;
+    
+    Catalyst::Exception->throw( 
+        message => qq/Couldn't create "$dir", "$!"/
+    );    
 }
 
 =head3 mk_file
@@ -202,7 +218,10 @@ sub mk_file {
         print qq/created "$file"\n/;
         return 1;
     }
-    die qq/Couldn't create "$file", "$!"/;
+    
+    Catalyst::Exception->throw( 
+        message => qq/Couldn't create "$file", "$!"/
+    );       
 }
 
 =head3 next_test
@@ -215,13 +234,16 @@ sub next_test {
     else {
         my $name   = $self->{name};
         my $prefix = $name;
-        $prefix =~ s/::/_/g;
-        $prefix         = lc $prefix;
+        $prefix =~ s/::/-/g;
+        $prefix         = $prefix;
         $tname          = $prefix . '.t';
         $self->{prefix} = $prefix;
+        $prefix = lc $prefix;
+        $prefix =~ s/-/\//g;
+        $self->{uri} = $prefix;
     }
     my $dir  = $self->{test_dir};
-    my $type = lc $self->{type};
+    my $type = $self->{type};
     return File::Spec->catfile( $dir, $type, $tname );
 }
 
@@ -254,9 +276,9 @@ sub _mk_dirs {
     $self->mk_dir( $self->{root} );
     $self->{t} = File::Spec->catdir( $self->{dir}, 't' );
     $self->mk_dir( $self->{t} );
-    $self->mk_dir( File::Spec->catdir( $self->{t}, 'm' ) );
-    $self->mk_dir( File::Spec->catdir( $self->{t}, 'v' ) );
-    $self->mk_dir( File::Spec->catdir( $self->{t}, 'c' ) );
+    $self->mk_dir( File::Spec->catdir( $self->{t}, 'M' ) );
+    $self->mk_dir( File::Spec->catdir( $self->{t}, 'V' ) );
+    $self->mk_dir( File::Spec->catdir( $self->{t}, 'C' ) );
     $self->{class} = File::Spec->catdir( split( /\:\:/, $self->{name} ) );
     $self->{mod} = File::Spec->catdir( $self->{lib}, $self->{class} );
     $self->mk_dir( $self->{mod} );
@@ -396,7 +418,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify 
+This library is free software . You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -449,7 +471,7 @@ sub default : Private {
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify 
+This library is free software . You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -528,6 +550,7 @@ plan skip_all => 'set TEST_POD to enable this test' unless $ENV{TEST_POD};
 all_pod_coverage_ok();
 __cgi__
 [% startperl %] -w
+
 BEGIN { $ENV{CATALYST_ENGINE} ||= 'CGI' }
 
 use strict;
@@ -541,7 +564,7 @@ use [% name %];
 
 =head1 NAME
 
-cgi - Catalyst CGI
+[% appprefix %]_cgi.pl - Catalyst CGI
 
 =head1 SYNOPSIS
 
@@ -559,7 +582,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify 
+This library is free software. You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -579,7 +602,7 @@ use [% name %];
 
 =head1 NAME
 
-fastcgi - Catalyst FastCGI
+[% appprefix %]_fastcgi.pl - Catalyst FastCGI
 
 =head1 SYNOPSIS
 
@@ -597,7 +620,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify 
+This library is free software. You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -629,11 +652,11 @@ pod2usage(1) if $help;
 
 =head1 NAME
 
-server - Catalyst Testserver
+[% appprefix %]_server.pl - Catalyst Testserver
 
 =head1 SYNOPSIS
 
-server.pl [options]
+[% appprefix %]_server.pl [options]
 
  Options:
    -? -help    display this help and exits
@@ -655,7 +678,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify 
+This library is free software. You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -683,18 +706,18 @@ print [% name %]->run($ARGV[0])->content . "\n";
 
 =head1 NAME
 
-test - Catalyst Test
+[% appprefix %]_test.pl - Catalyst Test
 
 =head1 SYNOPSIS
 
-test.pl [options] uri
+[% appprefix %]_test.pl [options] uri
 
  Options:
    -help    display this help and exits
 
  Examples:
-   test.pl http://localhost/some_action
-   test.pl /some_action
+   [% appprefix %]_test.pl http://localhost/some_action
+   [% appprefix %]_test.pl /some_action
 
  See also:
    perldoc Catalyst::Manual
@@ -712,7 +735,7 @@ Sebastian Riedel, C<sri@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify 
+This library is free software. You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -737,23 +760,23 @@ pod2usage(1) unless $helper->mk_component( '[% name %]', @ARGV );
 
 =head1 NAME
 
-create - Create a new Catalyst Component
+[% appprefix %]_create.pl - Create a new Catalyst Component
 
 =head1 SYNOPSIS
 
-create.pl [options] model|view|controller name [helper] [options]
+[% appprefix %]_create.pl [options] model|view|controller name [helper] [options]
 
  Options:
    -help    display this help and exits
 
  Examples:
-   create.pl controller My::Controller
-   create.pl view My::View
-   create.pl view MyView TT
-   create.pl view TT TT
-   create.pl model My::Model
-   create.pl model SomeDB CDBI dbi:SQLite:/tmp/my.db
-   create.pl model AnotherDB CDBI dbi:Pg:dbname=foo root 4321
+   [% appprefix %]_create.pl controller My::Controller
+   [% appprefix %]_create.pl view My::View
+   [% appprefix %]_create.pl view MyView TT
+   [% appprefix %]_create.pl view TT TT
+   [% appprefix %]_create.pl model My::Model
+   [% appprefix %]_create.pl model SomeDB CDBI dbi:SQLite:/tmp/my.db
+   [% appprefix %]_create.pl model AnotherDB CDBI dbi:Pg:dbname=foo root 4321
 
  See also:
    perldoc Catalyst::Manual
@@ -771,7 +794,7 @@ Sebastian Riedel, C<sri\@oook.de>
 
 Copyright 2004 Sebastian Riedel. All rights reserved.
 
-This library is free software. You can redistribute it and/or modify 
+This library is free software. You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -815,7 +838,7 @@ sub default : Private {
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify 
+This library is free software . You can redistribute it and/or modify
 it under the same terms as perl itself.
 
 =cut
@@ -827,7 +850,7 @@ use Test::More tests => 3;
 use_ok( Catalyst::Test, '[% app %]' );
 use_ok('[% class %]');
 
-ok( request('[% prefix %]')->is_success );
+ok( request('[% uri %]')->is_success );
 [% ELSE %]
 use Test::More tests => 1;
 use_ok('[% class %]');

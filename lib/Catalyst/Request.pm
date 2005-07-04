@@ -38,6 +38,7 @@ Catalyst::Request - Catalyst Request Class
     $req->content_encoding;
     $req->content_length;
     $req->content_type;
+    $req->cookie;
     $req->cookies;
     $req->header;
     $req->headers;
@@ -117,6 +118,34 @@ Shortcut to $req->headers->content_length
 
 Shortcut to $req->headers->content_type
 
+=item $req->cookie
+
+A convenient method to $req->cookies.
+
+    $cookie  = $c->request->cookie('name');
+    @cookies = $c->request->cookie;
+
+=cut
+
+sub cookie {
+    my $self = shift;
+
+    if ( @_ == 0 ) {
+        return keys %{ $self->cookies };
+    }
+
+    if ( @_ == 1 ) {
+
+        my $name = shift;
+
+        unless ( exists $self->cookies->{$name} ) {
+            return undef;
+        }
+        
+        return $self->cookies->{$name};
+    }
+}
+
 =item $req->cookies
 
 Returns a reference to a hash containing the cookies.
@@ -161,8 +190,8 @@ Shortcut for $req->body.
 
 =item $req->match
 
-This contains be the matching part of a regexp action. otherwise it
-returns the same as 'action'.
+This contains the matching part of a regexp action. Otherwise
+it returns the same as 'action'.
 
     print $c->request->match;
 
@@ -174,7 +203,8 @@ Contains the request method (C<GET>, C<POST>, C<HEAD>, etc).
 
 =item $req->param
 
-Get request parameters with a CGI.pm like param method.
+Get request parameters with a CGI.pm-compatible param method. This 
+is a method for accessing parameters in $c->req->parameters.
 
     $value  = $c->request->param('foo');
     @values = $c->request->param('foo');
@@ -235,7 +265,7 @@ Shortcut for $req->parameters.
 =item $req->parameters
 
 Returns a reference to a hash containing parameters. Values can
-be either a scalar or a arrayref containing scalars.
+be either a scalar or an arrayref containing scalars.
 
     print $c->request->parameters->{field};
     print $c->request->parameters->{field}->[0];
