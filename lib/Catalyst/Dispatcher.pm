@@ -24,15 +24,15 @@ See L<Catalyst>.
 
 =over 4
 
-=item $c->detach($command)
+=item $c->detach( $command [, \@arguments ] )
 
 Like C<forward> but doesn't return.
 
 =cut
 
 sub detach {
-    my ( $c, $command ) = @_;
-    $c->forward($command) if $command;
+    my ( $c, $command, @args ) = @_;
+    $c->forward( $command, @args ) if $command;
     die $Catalyst::Engine::DETACH;
 }
 
@@ -128,7 +128,10 @@ sub forward {
         return 0;
     }
 
-    my $caller    = caller(0);
+    # Relative forwards from detach
+    my $caller = ( caller(0) )[0]->isa('Catalyst::Dispatcher')
+      && ( ( caller(1) )[3] =~ /::detach$/ ) ? caller(1) : caller(0);
+
     my $namespace = '/';
     my $arguments = ( ref( $_[-1] ) eq 'ARRAY' ) ? pop(@_) : $c->req->args;
 
@@ -148,14 +151,15 @@ sub forward {
     my $results = $c->get_action( $command, $namespace );
 
     unless ( @{$results} ) {
-        
-        unless ( $c->components->{$command} ) {
-            my $error = qq/Couldn't forward to command "$command". Invalid action or component./;
+
+        unless ( defined( $c->components->{$command} ) ) {
+            my $error =
+qq/Couldn't forward to command "$command". Invalid action or component./;
             $c->error($error);
             $c->log->debug($error) if $c->debug;
             return 0;
         }
-        
+
         my $class  = $command;
         my $method = shift || 'process';
 
@@ -165,7 +169,8 @@ sub forward {
         }
 
         else {
-            my $error = qq/Couldn't forward to "$class". Does not implement "$method"/;
+            my $error =
+              qq/Couldn't forward to "$class". Does not implement "$method"/;
             $c->error($error);
             $c->log->debug($error)
               if $c->debug;
@@ -173,8 +178,8 @@ sub forward {
         }
 
     }
-    
-    local $c->request->{arguments} = [ @{ $arguments } ];
+
+    local $c->request->{arguments} = [ @{$arguments} ];
 
     for my $result ( @{$results} ) {
         $c->execute( @{ $result->[0] } );
@@ -318,15 +323,15 @@ sub set_action {
     if ( $flags{path} ) {
         $flags{path} =~ s/^\w+//;
         $flags{path} =~ s/\w+$//;
-        if ( $flags{path} =~ /^'(.*)'$/ ) { $flags{path} = $1 }
-        if ( $flags{path} =~ /^"(.*)"$/ ) { $flags{path} = $1 }
+        if ( $flags{path} =~ /^\s*'(.*)'\s*$/ ) { $flags{path} = $1 }
+        if ( $flags{path} =~ /^\s*"(.*)"\s*$/ ) { $flags{path} = $1 }
     }
 
     if ( $flags{regex} ) {
         $flags{regex} =~ s/^\w+//;
         $flags{regex} =~ s/\w+$//;
-        if ( $flags{regex} =~ /^'(.*)'$/ ) { $flags{regex} = $1 }
-        if ( $flags{regex} =~ /^"(.*)"$/ ) { $flags{regex} = $1 }
+        if ( $flags{regex} =~ /^\s*'(.*)'\s*$/ ) { $flags{regex} = $1 }
+        if ( $flags{regex} =~ /^\s*"(.*)"\s*$/ ) { $flags{regex} = $1 }
     }
 
     my $reverse = $prefix ? "$prefix/$method" : $method;

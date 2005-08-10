@@ -13,7 +13,7 @@ our $CATALYST_SCRIPT_GEN = 4;
 
 __PACKAGE__->mk_classdata($_) for qw/arguments dispatcher engine log/;
 
-our $VERSION = '5.30';
+our $VERSION = '5.32';
 our @ISA;
 
 =head1 NAME
@@ -242,17 +242,55 @@ Web:
 
 =back
 
+=head1 CREDITS
+
+Andy Grundman
+
+Andrew Ford
+
+Andrew Ruthven
+
+Autrijus Tang
+
+Christian Hansen
+
+Christopher Hicks
+
+Dan Sully
+
+Danijel Milicevic
+
+David Naughton
+
+Gary Ashton Jones
+
+Geoff Richards
+
+Jesse Sheidlower
+
+Jody Belka
+
+Johan Lindstrom
+
+Juan Camacho
+
+Leon Brocard
+
+Marcus Ramberg
+
+Matt S Trout
+
+Robert Sedlacek
+
+Sebastian Riedel
+
+Tatsuhiko Miyagawa
+
+Ulf Edvinsson
+
 =head1 AUTHOR
 
 Sebastian Riedel, C<sri@oook.de>
-
-=head1 THANK YOU
-
-Andy Grundman, Andrew Ford, Andrew Ruthven, Autrijus Tang, Christian Hansen,
-Christopher Hicks, Dan Sully, Danijel Milicevic, David Naughton,
-Gary Ashton Jones, Geoff Richards, Jesse Sheidlower, Jody Belka,
-Johan Lindstrom, Juan Camacho, Leon Brocard, Marcus Ramberg,
-Tatsuhiko Miyagawa and all the others who've helped.
 
 =head1 LICENSE
 

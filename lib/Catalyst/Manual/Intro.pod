@@ -413,11 +413,12 @@ Called at the end of a request, after all matching actions are called.
 
 =back
 
-=head4 B<Built-in actions in controllers/autochaining>
+=head4 Built-in actions in controllers/autochaining
 
     Package MyApp::C::Foo;
     sub begin : Private { }
     sub default : Private { }
+    sub auto : Private { }
 
 You can define built-in private actions within your controllers as
 well. The actions will override the ones in less-specific controllers,
@@ -427,13 +428,13 @@ cycle. Thus, if C<MyApp::C::Catalog::begin> exists, it will be run in
 place of C<MyApp::begin> if you're in the C<catalog> namespace, and
 C<MyApp::C::Catalog::Order::begin> would override this in turn.
 
-In addition to the normal built-ins, you have a special action for
-making chains, C<auto>. Such C<auto> actions will be run after any
+In addition to the normal built-in actions, you have a special action
+for making chains, C<auto>. Such C<auto> actions will be run after any
 C<begin>, but before your action is processed. Unlike the other
-built-ins, C<auto> actions I<do not> override each other; they will
-be called in turn, starting with the application class and going
-through to the I<most> specific class. I<This is the reverse of the
-order in which the normal built-ins override each other>.
+built-ins, C<auto> actions I<do not> override each other; they will be
+called in turn, starting with the application class and going through to
+the I<most> specific class. I<This is the reverse of the order in which
+the normal built-ins override each other>.
 
 Here are some examples of the order in which the various built-ins
 would be called:
@@ -486,7 +487,7 @@ true value to continue processing! You can also C<die> in the autochain
 action; in that case, the request will go straight to the finalize
 stage, without processing further actions.
 
-=head4 B<URL Path Handling>
+=head4 URL Path Handling
 
 You can pass variable arguments as part of the URL path. In this case,
 you must use regex action keys with '^' and '$' anchors, and the
@@ -510,7 +511,7 @@ Catalyst matches actions in most specific to least specific order:
 So Catalyst would never mistakenly dispatch the first two URLs to the
 '^foo$' action.
 
-=head4 B<Parameter Processing>
+=head4 Parameter Processing
 
 Parameters passed in the URL query string are handled with methods in
 the L<Catalyst::Request> class. The C<param> method is functionally
@@ -615,8 +616,11 @@ Here are some examples of how to forward to classes and methods.
     }
 
 Note that C<forward> returns to the calling action and continues
-processing after the action finishes.  Catalyst will automatically try
-to call process() if you omit the method.
+processing after the action finishes. If you want all further processing
+in the calling action to stop, use C<detach> instead, which will execute
+the C<detach>ed action and not return to the calling sub. In both cases,
+Catalyst will automatically try to call process() if you omit the
+method.
 
 =head3 Components
 
@@ -636,11 +640,11 @@ class structure and some common class methods like C<config> and C<new>
 
     1;
 
-You don't have to C<use> or otherwise register Models, Views, and Controllers.
-Catalyst automatically discovers and instantiates them when you call C<setup> in
-the main application. All you need to do is put them in directories named for
-each Component type. Notice that you can use some very terse aliases for each
-one.
+You don't have to C<use> or otherwise register Models, Views, and
+Controllers.  Catalyst automatically discovers and instantiates them
+when you call C<setup> in the main application. All you need to do is
+put them in directories named for each Component type. Notice that you
+can use some very terse aliases for each one.
 
 =over 4
 
@@ -675,8 +679,8 @@ inherit from this class:
 
     script/myapp_create.pl view TT TT
 
-where the first C<TT> tells the script to create a Template Toolkit
-view, and the second tells the script that its name should be C<TT>.)
+where the first C<TT> tells the script that the name of the view should
+be C<TT>, and the second that it should be a Template Toolkit view.)
 
 This gives us a process() method and we can now just do
 $c->forward('MyApp::V::TT') to render our templates. The base class makes
@@ -693,12 +697,12 @@ process/)>.
         $c->forward('MyApp::V::TT');
     }
 
-You normally render templates at the end of a request, so it's a perfect use for
-the global C<end> action.
+You normally render templates at the end of a request, so it's a perfect
+use for the global C<end> action.
 
 Also, be sure to put the template under the directory specified in
-C<$c-E<gt>config-E<gt>{root}>, or you'll be forced to look at our eyecandy debug
-screen. ;)
+C<$c-E<gt>config-E<gt>{root}>, or you'll be forced to look at our
+eyecandy debug screen. ;)
 
 =head4 Models
 
@@ -766,7 +770,40 @@ pass data to your templates.
 
     1;
 
+    # Then, in a TT template:
     The id is [% item.data %]
+
+Models do not have to be part of your Catalyst application; you
+can always call an outside module that serves as your Model:
+
+    # in a Controller
+    sub list : Local {
+      my ( $self, $c ) = @_;
+      $c->stash->{template} = 'list.tt';
+      use Some::Outside::CDBI::Module;
+      my @records = Some::Outside::CDBI::Module->retrieve_all;
+      $c->stash->{records} = \@records;
+    }
+
+But by using a Model that is part of your Catalyst application, you gain
+several things: you don't have to C<use> each component, Catalyst will
+find and load it automatically at compile-time; you can C<forward> to
+the module, which can only be done to Catalyst componenents; and only
+Catalyst components can be fetched with
+C<$c-E<gt>comp('MyApp::M::SomeModel')>.
+
+Happily, since many people have existing Model classes that they
+would like to use with Catalyst (or, conversely, they want to
+write Catalyst models that can be used outside of Catalyst, e.g.
+in a cron job), it's trivial to write a simple component in
+Catalyst that slurps in an outside Model:
+
+    package MyApp::M::Catalog;
+    use base qw/Catalyst::Base Some::Other::CDBI::Module::Catalog/;
+    1;
+
+and that's it! Now C<Some::Other::CDBI::Module::Catalog> is part of your
+Cat app as C<MyApp::M::Catalog>.
 
 =head4 Controllers
 
@@ -775,9 +812,9 @@ application.
 
     package MyApp::C::Login;
 
-    sign-in : Local { }
-    new-password : Local { }
-    sign-out : Local { }
+    sub sign-in : Local { }
+    sub new-password : Local { }
+    sub sign-out : Local { }
 
     package MyApp::C::Catalog;
 
