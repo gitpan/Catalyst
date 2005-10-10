@@ -208,7 +208,7 @@ To log in a user you might use an action like this:
             $c->session_login($c->req->params->{username}, 
                               $c->req->params->{password} );
             if ($c->req->{user}) {
-                $c->forward('?restricted_area');
+                $c->forward('/restricted_area');
             }
         }
     }
@@ -266,22 +266,22 @@ with:
     sub add : Local {
         my ($self, $c) = @_;
         if ($c->roles(qw/admin/)) {
-            $c->req->output("Your account has the role 'admin.'");
+            $c->res->output("Your account has the role 'admin.'");
         } else {
-            $c->req->output("You're not allowed to be here.");
+            $c->res->output("You're not allowed to be here.");
         }
     }
 
 One thing you might need is to forward non-authenticated users to a login 
 form if they try to access restricted areas. If you want to do this 
 controller-wide (if you have one controller for your admin section) then it's 
-best to add a user check to a '!begin' action:
+best to add a user check to a 'begin' action:
 
     sub begin : Private {
         my ($self, $c) = @_;
         unless ($c->req->{user}) {
             $c->req->action(undef);  ## notice this!!
-            $c->forward('?login');
+            $c->forward('/user/login');
         }
     }
 
