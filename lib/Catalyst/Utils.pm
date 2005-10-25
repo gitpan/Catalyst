@@ -22,6 +22,19 @@ See L<Catalyst>.
 
 =over 4
 
+=item appprefix($class)
+
+Returns the application prefix for the class
+
+=cut
+
+sub appprefix {
+    my $class = shift;
+    $class =~ s/\:\:/_/g;
+    $class = lc($class);
+    return $class;
+}
+
 =item attrs($coderef)
 
 Returns attributes for coderef in a arrayref
@@ -83,7 +96,7 @@ sub class2classsuffix {
 
 =item class2env($class);
 
-Returns the enviroment name for class.
+Returns the environment name for class.
 
     MyApp becomes MYAPP
     My::App becomes MY_APP
@@ -211,17 +224,15 @@ sub reflect_actions {
     return $actions;
 }
 
-=item request($string);
+=item request($request)
 
-Returns an C<HTTP::Request> from a string.
+Returns a HTTP::Request object.
 
 =cut
 
 sub request {
     my $request = shift;
-
     unless ( ref $request ) {
-
         if ( $request =~ m/http/i ) {
             $request = URI->new($request)->canonical;
         }
@@ -229,11 +240,9 @@ sub request {
             $request = URI->new( 'http://localhost' . $request )->canonical;
         }
     }
-
     unless ( ref $request eq 'HTTP::Request' ) {
         $request = HTTP::Request->new( 'GET', $request );
     }
-
     return $request;
 }
 

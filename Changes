@@ -1,5 +1,27 @@
 Tis file documents the revision history for Perl extension Catalyst.
 
+5.49_02 2005-10-26 12:39:00 
+        - Whole new dispatcher!
+        - Added index action
+        - Added path_to method
+        - Added support for passing an IO::Handle object to $c->res->body.
+          (Andrew Bramble)
+        - Added a new welcome screen.
+        - Included Catalyst buttons and icons in helper.
+        - Added Static::Simple plugin to core.
+        - Added self restarting test server
+        - Added filename to debug output for uploaded files.
+        - Fixed forwarding with embedded arguments.
+        - Fixed handling of escaped query strings.
+        - Added upload parameters back into $c->req->params.
+        - Added multiple paths support to dispatcher
+        - Fixed bug in req->path where changing the path added a trailing
+          slash.
+        - Removed req->handle and res->handle
+        - Added prepare_body_chunk method as a hook for upload progress.
+        - Fixed bug in uri_for method when base has no path.
+        - Added automated tests for HTTP, CGI, and FastCGI servers.
+
 5.49_01 2005-10-10 10:15:00 
         - Refactored all internals, should be 99% compatible to previous
           versions.

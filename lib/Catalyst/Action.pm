@@ -3,7 +3,7 @@ package Catalyst::Action;
 use strict;
 use base qw/Class::Accessor::Fast/;
 
-__PACKAGE__->mk_accessors(qw/code namespace reverse/);
+__PACKAGE__->mk_accessors(qw/code namespace reverse prefix attributes name/);
 
 use overload (
 
@@ -29,6 +29,8 @@ See L<Catalyst>.
 
 =over 4
 
+=item attributes
+
 =item code
 
 =item execute
@@ -44,14 +46,7 @@ sub execute {    # Execute ourselves against a context
 
 =item reverse
 
-=item new
-
-=cut
-
-sub new {        # Dumbass constructor
-    my ( $class, $attrs ) = @_;
-    return bless { %{ $attrs || {} } }, $class;
-}
+=item name
 
 =back
 

@@ -17,7 +17,9 @@ use Time::HiRes qw/gettimeofday tv_interval/;
 use URI;
 use Scalar::Util qw/weaken/;
 
-__PACKAGE__->mk_accessors(qw/counter depth request response state/);
+__PACKAGE__->mk_accessors(
+    qw/counter depth request response state action namespace/
+);
 
 # Laziness++
 *comp = \&component;
@@ -36,12 +38,12 @@ our $DETACH    = "catalyst_detach\n";
 require Module::Pluggable::Fast;
 
 # Helper script generation
-our $CATALYST_SCRIPT_GEN = 6;
+our $CATALYST_SCRIPT_GEN = 8;
 
 __PACKAGE__->mk_classdata($_)
   for qw/components arguments dispatcher engine log/;
 
-our $VERSION = '5.49_01';
+our $VERSION = '5.49_02';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -119,7 +121,7 @@ so C<Catalyst::Plugin::My::Module> becomes C<My::Module>.
 
     use Catalyst 'My::Module';
 
-Special flags like -Debug and -Engine can also be specifed as arguments when
+Special flags like -Debug and -Engine can also be specified as arguments when
 Catalyst is loaded:
 
     use Catalyst qw/-Debug My::Module/;
@@ -166,6 +168,10 @@ Specify log level.
 =head1 METHODS
 
 =over 4
+
+=item $c->action
+
+Accessor for the current action
 
 =item $c->comp($name)
 
@@ -250,6 +256,27 @@ from the function.
 =cut
 
 sub forward { my $c = shift; $c->dispatcher->forward( $c, @_ ) }
+
+=item $c->namespace
+
+Accessor to the namespace of the current action
+
+=item $c->path_to(@path)
+
+Merges C<@path> with $c->config->{home} and returns a L<Path::Class> object.
+
+For example:
+
+    $c->path_to( 'db', 'sqlite.db' );
+
+=cut
+
+sub path_to {
+    my ( $c, @path ) = @_;
+    my $path = dir( $c->config->{home}, @path );
+    if ( -d $path ) { return $path }
+    else { return file( $c->config->{home}, @path ) }
+}
 
 =item $c->setup
 
@@ -379,27 +406,33 @@ sub setup {
     $class->log->_flush() if $class->log->can('_flush');
 }
 
-=item $c->uri_for($path)
+=item $c->uri_for($path,[@args])
 
 Merges path with $c->request->base for absolute uri's and with
 $c->request->match for relative uri's, then returns a normalized
-L<URI> object.
+L<URI> object. If any args are passed, they are added at the end
+of the path.
 
 =cut
 
 sub uri_for {
-    my ( $c, $path ) = @_;
+    my ( $c, $path, @args ) = @_;
     my $base     = $c->request->base->clone;
     my $basepath = $base->path;
     $basepath =~ s/\/$//;
-    $basepath .= '/' if $basepath;
+    $basepath .= '/';
     my $match = $c->request->match;
+
+    # massage match, empty if absolute path
     $match =~ s/^\///;
     $match .= '/' if $match;
     $match = '' if $path =~ /^\//;
     $path =~ s/^\///;
-    return URI->new_abs( URI->new_abs( $path, "$basepath$match" ), $base )
-      ->canonical;
+
+    # join args with '/', or a blank string
+    my $args = ( scalar @args ? '/' . join( '/', @args ) : '' );
+    return URI->new_abs( URI->new_abs( "$path$args", "$basepath$match" ),
+        $base )->canonical;
 }
 
 =item $c->error
@@ -416,13 +449,20 @@ Add a new error.
 
     $c->error('Something bad happened');
 
+Clean errors.
+
+    $c->error(0);
+
 =cut
 
 sub error {
     my $c = shift;
-    my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
-    push @{ $c->{error} }, @$error;
-    return $c->{error};
+    if ( $_[0] ) {
+        my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
+        push @{ $c->{error} }, @$error;
+    }
+    elsif ( defined $_[0] ) { $c->{error} = undef }
+    return $c->{error} || [];
 }
 
 =item $c->engine
@@ -500,8 +540,16 @@ Contains the return value of the last executed action.
 
 Returns a hashref containing all your data.
 
-    $c->stash->{foo} ||= 'yada';
     print $c->stash->{foo};
+
+Keys may be set in the stash by assigning to the hash reference, or by passing
+either a single hash reference or a list of key/value pairs as arguments.
+
+For example:
+
+    $c->stash->{foo} ||= 'yada';
+    $c->stash( { moose => 'majestic', qux => 0 } );
+    $c->stash( bar => 1, gorch => 2 );
 
 =cut
 
@@ -514,6 +562,146 @@ sub stash {
         }
     }
     return $c->{stash};
+}
+
+=item $c->welcome_message
+
+Returns the Catalyst welcome HTML page.
+
+=cut
+
+sub welcome_message {
+    my $c      = shift;
+    my $name   = $c->config->{name};
+    my $logo   = $c->uri_for('/static/images/catalyst_logo.png');
+    my $prefix = Catalyst::Utils::appprefix( ref $c );
+    return <<"EOF";
+<html>
+    <head>
+        <title>$name on Catalyst $VERSION</title>
+        <style type="text/css">
+            body {
+                text-align: center;
+                padding-left: 50%;
+                color: #000;
+                background-color: #eee;
+            }
+            div#content {
+                width: 640px;
+                margin-left: -320px;
+                margin-top: 10px;
+                margin-bottom: 10px;
+                text-align: left;
+                background-color: #ccc;
+                border: 1px solid #aaa;
+                -moz-border-radius: 10px;
+            }
+            p, h1, h2 {
+                margin-left: 20px;
+                margin-right: 20px;
+                font-family: verdana, tahoma, sans-serif;
+            }
+            a {
+                font-family: verdana, tahoma, sans-serif;
+            }
+            :link, :visited {
+                    text-decoration: none;
+                    color: #b00;
+                    border-bottom: 1px dotted #bbb;
+            }
+            :link:hover, :visited:hover {
+                    color: #555;
+            }
+            div#topbar {
+                margin: 0px;
+            }
+            pre {
+                margin: 10px;
+                padding: 8px;
+            }
+            div#answers {
+                padding: 8px;
+                margin: 10px;
+                background-color: #fff;
+                border: 1px solid #aaa;
+                -moz-border-radius: 10px;
+            }
+            h1 {
+                font-size: 0.9em;
+                font-weight: normal;
+                text-align: center;
+            }
+            h2 {
+                font-size: 1.0em;
+            }
+            p {
+                font-size: 0.9em;
+            }
+            p img {
+                float: right;
+                margin-left: 10px;
+            }
+            b#appname {
+                font-size: 1.6em;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="content">
+            <div id="topbar">
+                <h1><b id="appname">$name</b> on <a href="http://catalyst.perl.org">Catalyst</a>
+                    $VERSION</h1>
+             </div>
+             <div id="answers">
+                 <p>
+                 <img src="$logo"/>
+                 </p>
+                 <p>Welcome to the wonderful world of Catalyst.
+                    This <a href="http://en.wikipedia.org/wiki/MVC">MVC</a>
+                    framework will make web development something you had
+                    never expected it to be: Fun, rewarding and quick.</p>
+                 <h2>What to do now?</h2>
+                 <p>That really depends  on what <b>you</b> want to do.
+                    We do, however, provide you with a few starting points.</p>
+                 <p>If you want to jump right into web development with Catalyst
+                    you might want to check out the documentation.</p>
+                 <pre><code>perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual/Intro.pod">Catalyst::Manual::Intro</a>
+perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual.pod">Catalyst::Manual</a></code></pre>
+                 <h2>What to do next?</h2>
+                 <p>Next it's time to write an actual application. Use the
+                    helper scripts to generate <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AController%3A%3A&mode=all">controllers</a>,
+                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AModel%3A%3A&mode=all">models</a> and
+                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AView%3A%3A&mode=all">views</a>,
+                    they can save you a lot of work.</p>
+                    <pre><code>script/${prefix}_create.pl -help</code></pre>
+                    <p>Also, be sure to check out the vast and growing
+                    collection of <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3APlugin%3A%3A&mode=all">plugins for Catalyst on CPAN</a>,
+                    you are likely to find what you need there.
+                    </p>
+
+                 <h2>Need help?</h2>
+                 <p>Catalyst has a very active community. Here are the main places to
+                    get in touch with us.</p>
+                 <ul>
+                     <li>
+                         <a href="http://dev.catalyst.perl.org">Wiki</a>
+                     </li>
+                     <li>
+                         <a href="http://lists.rawmode.org/mailman/listinfo/catalyst">Mailing-List</a>
+                     </li>
+                     <li>
+                         <a href="irc://irc.perl.org/catalyst">IRC channel #catalyst on irc.perl.org</a>
+                     </li>
+                 </ul>
+                 <h2>In conclusion</h2>
+                 <p>The Catalyst team hopes you will enjoy using Catalyst as much 
+                    as we enjoyed making it. Please contact us if you have ideas
+                    for improvement or other feedback.</p>
+             </div>
+         </div>
+    </body>
+</html>
+EOF
 }
 
 =back
@@ -599,7 +787,9 @@ sub execute {
             push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
             $c->state(@state);
         }
-        else { $c->state( &$code( $class, $c, @{ $c->req->args } ) || 0 ) }
+        else {
+            $c->state( &$code( $class, $c, @{ $c->req->args } ) || 0 );
+        }
     };
     $c->{depth}--;
 
@@ -805,7 +995,6 @@ sub prepare {
                 arguments        => [],
                 body_parameters  => {},
                 cookies          => {},
-                handle           => \*STDIN,
                 headers          => HTTP::Headers->new,
                 parameters       => {},
                 query_parameters => {},
@@ -818,7 +1007,6 @@ sub prepare {
             {
                 body    => '',
                 cookies => {},
-                handle  => \*STDOUT,
                 headers => HTTP::Headers->new(),
                 status  => 200
             }
@@ -902,6 +1090,17 @@ sub prepare_body {
         }
         $c->log->debug( "Body Parameters are:\n" . $t->draw );
     }
+}
+
+=item $c->prepare_body_chunk( $chunk )
+
+Prepare a chunk of data before sending it to HTTP::Body.
+
+=cut
+
+sub prepare_body_chunk {
+    my $c = shift;
+    $c->engine->prepare_body_chunk( $c, @_ );
 }
 
 =item $c->prepare_body_parameters
@@ -1018,15 +1217,16 @@ sub prepare_uploads {
 
     if ( $c->debug && keys %{ $c->request->uploads } ) {
         my $t = Text::ASCIITable->new;
-        $t->setCols( 'Filename', 'Type', 'Size' );
-        $t->setColWidth( 'Filename', 37, 1 );
-        $t->setColWidth( 'Type',     24, 1 );
+        $t->setCols( 'Key', 'Filename', 'Type', 'Size' );
+        $t->setColWidth( 'Key',      12, 1 );
+        $t->setColWidth( 'Filename', 28, 1 );
+        $t->setColWidth( 'Type',     18, 1 );
         $t->setColWidth( 'Size',     9,  1 );
         $t->alignCol( 'Size', 'left' );
         for my $key ( sort keys %{ $c->request->uploads } ) {
             my $upload = $c->request->uploads->{$key};
             for my $u ( ref $upload eq 'ARRAY' ? @{$upload} : ($upload) ) {
-                $t->addRow( $key, $u->type, $u->size );
+                $t->addRow( $key, $u->filename, $u->type, $u->size );
             }
         }
         $c->log->debug( "File Uploads are:\n" . $t->draw );
@@ -1342,7 +1542,23 @@ data, if known.
 
 =cut
 
-sub write { my $c = shift; return $c->engine->write( $c, @_ ) }
+sub write {
+    my $c = shift;
+
+    # Finalize headers if someone manually writes output
+    $c->finalize_headers;
+
+    return $c->engine->write( $c, @_ );
+}
+
+=item version
+
+Returns the Catalyst version number. mostly useful for powered by messages
+in template systems.
+
+=cut
+
+sub version { return $Catalyst::VERSION }
 
 =back
 
@@ -1445,6 +1661,10 @@ Andy Grundman
 
 Andy Wardley
 
+Andreas Marienborg
+
+Andrew Bramble
+
 Andrew Ford
 
 Andrew Ruthven
@@ -1489,14 +1709,16 @@ Tatsuhiko Miyagawa
 
 Ulf Edvinsson
 
+Yuval Kogman
+
 =head1 AUTHOR
 
 Sebastian Riedel, C<sri@oook.de>
 
 =head1 LICENSE
 
-This library is free software . You can redistribute it and/or modify it under
-the same terms as perl itself.
+This library is free software, you can redistribute it and/or modify it under
+the same terms as Perl itself.
 
 =cut
 

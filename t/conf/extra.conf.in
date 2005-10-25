@@ -1,0 +1,11 @@
+# CGI
+<IfModule @CGI_MODULE@>
+    ScriptAlias /cgi/ @ServerRoot@/tmp/TestApp/script/testapp_cgi.pl/
+</IfModule>
+
+# FastCGI
+<IfModule mod_fastcgi.c>
+    FastCgiIpcDir @ServerRoot@/tmp/tmp
+    FastCgiServer @ServerRoot@/tmp/TestApp/script/testapp_fastcgi.pl -idle-timeout 300 -processes 5
+    ScriptAlias /fastcgi/ @ServerRoot@/tmp/TestApp/script/testapp_fastcgi.pl/
+</IfModule>

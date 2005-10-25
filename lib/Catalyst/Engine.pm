@@ -7,12 +7,16 @@ use Data::Dumper;
 use HTML::Entities;
 use HTTP::Body;
 use HTTP::Headers;
+use URI::QueryParam;
 
 # input position and length
-__PACKAGE__->mk_accessors( qw/read_position read_length/ );
+__PACKAGE__->mk_accessors(qw/read_position read_length/);
 
 # Stringify to class
 use overload '""' => sub { return ref shift }, fallback => 1;
+
+# Amount of data to read from input on each pass
+our $CHUNKSIZE = 4096;
 
 =head1 NAME
 
@@ -40,8 +44,16 @@ Finalize body.  Prints the response output.
 
 sub finalize_body {
     my ( $self, $c ) = @_;
-    
-    $self->write( $c, $c->response->output );
+    if ( ref $c->response->body && $c->response->body->can('read') ) {
+        while ( !$c->response->body->eof() ) {
+            $c->response->body->read( my $buffer, $CHUNKSIZE );
+            $self->write( $c, $buffer );
+        }
+        $c->response->body->close();
+    }
+    else {
+        $self->write( $c, $c->response->body );
+    }
 }
 
 =item $self->finalize_cookies($c)
@@ -206,7 +218,7 @@ sub finalize_headers { }
 
 sub finalize_read {
     my ( $self, $c ) = @_;
-    
+
     undef $self->{_prepared_read};
 }
 
@@ -240,12 +252,22 @@ sub prepare_body {
     unless ( $c->request->{_body} ) {
         $c->request->{_body} = HTTP::Body->new( $type, $self->read_length );
     }
-    
+
     if ( $self->read_length > 0 ) {
-        while ( my $buffer = $self->read( $c ) ) {
-            $c->request->{_body}->add( $buffer );
+        while ( my $buffer = $self->read($c) ) {
+            $c->prepare_body_chunk($buffer);
         }
     }
+}
+
+=item $self->prepare_body_chunk($c)
+
+=cut
+
+sub prepare_body_chunk {
+    my ( $self, $c, $chunk ) = @_;
+
+    $c->request->{_body}->add($chunk);
 }
 
 =item $self->prepare_body_parameters($c)
@@ -320,7 +342,19 @@ sub prepare_path { }
 
 =cut
 
-sub prepare_query_parameters { }
+sub prepare_query_parameters {
+    my ( $self, $c, $query_string ) = @_;
+
+    # replace semi-colons
+    $query_string =~ s/;/&/g;
+
+    my $u = URI->new( '', 'http' );
+    $u->query($query_string);
+    for my $key ( $u->query_param ) {
+        my @vals = $u->query_param($key);
+        $c->request->query_parameters->{$key} = @vals > 1 ? [@vals] : $vals[0];
+    }
+}
 
 =item $self->prepare_read($c)
 
@@ -328,9 +362,9 @@ sub prepare_query_parameters { }
 
 sub prepare_read {
     my ( $self, $c ) = @_;
-    
+
     # Reset the read position
-    $self->read_position( 0 );
+    $self->read_position(0);
 }
 
 =item $self->prepare_request(@arguments)
@@ -360,6 +394,11 @@ sub prepare_uploads {
             push @uploads, $u;
         }
         $c->request->uploads->{$name} = @uploads > 1 ? \@uploads : $uploads[0];
+
+        # support access to the filename as a normal param
+        my @filenames = map { $_->{filename} } @uploads;
+        $c->request->parameters->{$name} =
+          @filenames > 1 ? \@filenames : $filenames[0];
     }
 }
 
@@ -375,18 +414,18 @@ sub prepare_write { }
 
 sub read {
     my ( $self, $c, $maxlength ) = @_;
-    
+
     unless ( $self->{_prepared_read} ) {
-        $self->prepare_read( $c );
+        $self->prepare_read($c);
         $self->{_prepared_read} = 1;
     }
-    
+
     my $remaining = $self->read_length - $self->read_position;
-    $maxlength ||= $self->read_length;
-    
+    $maxlength ||= $CHUNKSIZE;
+
     # Are we done reading?
     if ( $remaining <= 0 ) {
-        $self->finalize_read( $c );
+        $self->finalize_read($c);
         return;
     }
 
@@ -397,9 +436,8 @@ sub read {
         return $buffer;
     }
     else {
-        Catalyst::Exception->throw( 
-            message => "Unknown error reading input: $!"
-        );
+        Catalyst::Exception->throw(
+            message => "Unknown error reading input: $!" );
     }
 }
 
@@ -433,15 +471,13 @@ sub run { }
 
 sub write {
     my ( $self, $c, $buffer ) = @_;
-    
+
     unless ( $self->{_prepared_write} ) {
-        $self->prepare_write( $c );
+        $self->prepare_write($c);
         $self->{_prepared_write} = 1;
     }
-    
-    my $handle = $c->response->handle;
-    
-    print $handle $buffer;
+
+    print STDOUT $buffer;
 }
 
 =back
