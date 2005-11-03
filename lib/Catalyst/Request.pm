@@ -6,7 +6,7 @@ use base 'Class::Accessor::Fast';
 use IO::Socket qw[AF_INET inet_aton];
 
 __PACKAGE__->mk_accessors(
-    qw/action address arguments base cookies headers match method
+    qw/action address arguments cookies headers match method
       protocol query_parameters secure snippets uri user/
 );
 
@@ -101,9 +101,40 @@ Returns a reference to an array containing the arguments.
 
     print $c->request->arguments->[0];
 
+For example, if your action was
+
+	package MyApp::C::Foo;
+	
+	sub moose : Local {
+		...
+	}
+
+And the URI for the request was C<http://.../foo/moose/bah> the string C<bah>
+would be the first and only argument.
+
 =item $req->base
 
-Contains the url base. This will always have a trailing slash.
+Contains the URI base. This will always have a trailing slash.
+
+If your application was queried with the URI C<http://localhost:3000/some/path>
+then C<base> is C<http://localhost:3000/>.
+
+=cut
+
+sub base {
+    my ( $self, $base ) = @_;
+    
+    return $self->{base} unless $base;
+    
+    $self->{base} = $base;
+    
+    # set the value in path for backwards-compat
+    if ( $self->uri ) {
+        $self->path;
+    }
+    
+    return $self->{base};
+}
 
 =item $req->body
 
@@ -127,6 +158,8 @@ be either a scalar or an arrayref containing scalars.
 
     print $c->request->body_parameters->{field};
     print $c->request->body_parameters->{field}->[0];
+
+These are the parameters from the POST part of the request, if any.
     
 =item $req->body_params
 
@@ -187,6 +220,9 @@ Returns a reference to a hash containing the cookies.
 
     print $c->request->cookies->{mycookie}->value;
 
+The cookies in the hash are indexed by name, and the values are C<CGI::Cookie>
+objects.
+
 =item $req->header
 
 Shortcut to $req->headers->header
@@ -242,9 +278,18 @@ Contains the request method (C<GET>, C<POST>, C<HEAD>, etc).
 Get request parameters with a CGI.pm-compatible param method. This 
 is a method for accessing parameters in $c->req->parameters.
 
-    $value  = $c->request->param('foo');
-    @values = $c->request->param('foo');
+    $value  = $c->request->param( 'foo' );
+    @values = $c->request->param( 'foo' );
     @params = $c->request->param;
+
+Like C<CGI>, and B<unlike> previous versions of Catalyst, passing multiple
+arguments to this method, like this:
+
+	$c->request( 'foo', 'bar', 'gorch', 'quxx' );
+
+will set the parameter C<foo> to the multiple values C<bar>, C<gorch> and
+C<quxx>. Previously this would have added C<bar> as another value to C<foo>
+(creating it if it didn't exist before), and C<quxx> as another value for C<gorch>.
 
 =cut
 
@@ -274,23 +319,9 @@ sub param {
               : $self->parameters->{$param};
         }
     }
-
-    if ( @_ > 1 ) {
-
-        while ( my ( $field, $value ) = splice( @_, 0, 2 ) ) {
-
-            next unless defined $field;
-
-            if ( exists $self->parameters->{$field} ) {
-                for ( $self->parameters->{$field} ) {
-                    $_ = [$_] unless ref($_) eq "ARRAY";
-                    push( @$_, $value );
-                }
-            }
-            else {
-                $self->parameters->{$field} = $value;
-            }
-        }
+    elsif ( @_ > 1 ) {
+        my $field = shift;
+        $self->parameters->{$field} = [@_];
     }
 }
 
@@ -305,6 +336,8 @@ be either a scalar or an arrayref containing scalars.
 
     print $c->request->parameters->{field};
     print $c->request->parameters->{field}->[0];
+
+This is the combination of C<query_parameters> and C<body_parameters>.
 
 =cut
 
@@ -333,12 +366,16 @@ sub path {
     if ($params) {
         $self->uri->path($params);
     }
+    else {
+        return $self->{path} if $self->{path};
+    }
 
     my $path     = $self->uri->path;
     my $location = $self->base->path;
     $path =~ s/^(\Q$location\E)?//;
     $path =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
     $path =~ s/^\///;
+    $self->{path} = $path;
 
     return $path;
 }
@@ -354,6 +391,9 @@ be either a scalar or an arrayref containing scalars.
 
     print $c->request->query_parameters->{field};
     print $c->request->query_parameters->{field}->[0];
+
+These are the parameters from the query string portion of the request's URI, if
+any.
     
 =item $req->read( [$maxlength] )
 

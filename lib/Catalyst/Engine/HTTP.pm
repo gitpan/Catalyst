@@ -3,9 +3,6 @@ package Catalyst::Engine::HTTP;
 use strict;
 use base 'Catalyst::Engine::CGI';
 use Errno 'EWOULDBLOCK';
-use FindBin;
-use File::Find;
-use File::Spec;
 use HTTP::Status;
 use NEXT;
 use Socket;
@@ -112,57 +109,12 @@ sub run {
     my ( $self, $class, $port, $host, $options ) = @_;
 
     $options ||= {};
-
+    
     our $GOT_HUP;
     local $GOT_HUP = 0;
-
+    
     local $SIG{HUP} = sub { $GOT_HUP = 1; };
     local $SIG{CHLD} = 'IGNORE';
-
-    # Setup restarter
-    my $restarter;
-    if ( $options->{restart} ) {
-        my $parent = $$;
-        unless ( $restarter = fork ) {
-
-            # Prepare
-            close STDIN;
-            close STDOUT;
-
-            # Index parent directory
-            my $dir = File::Spec->catdir( $FindBin::Bin, '..' );
-
-            my $regex = $options->{restart_regex};
-            my $one   = _index( $dir, $regex );
-          RESTART: while (1) {
-                sleep $options->{restart_delay};
-                my $two     = _index( $dir,         $regex );
-                my $changes = _compare_index( $one, $two );
-                if (@$changes) {
-                    $one = $two;
-
-                    # Test modified pm's
-                    for my $file (@$changes) {
-                        next unless $file =~ /\.pm$/;
-                        if ( my $error = _test($file) ) {
-                            print STDERR
-                              qq/File "$file" modified, not restarting\n\n/;
-                            print STDERR '*' x 80, "\n";
-                            print STDERR $error;
-                            print STDERR '*' x 80, "\n";
-                            next RESTART;
-                        }
-                    }
-
-                    # Restart
-                    my $files = join ', ', @$changes;
-                    print STDERR qq/File(s) "$files" modified, restarting\n\n/;
-                    kill( 1, $parent );
-                    exit;
-                }
-            }
-        }
-    }
 
     # Handle requests
 
@@ -274,22 +226,8 @@ sub run {
     if ($GOT_HUP) {
         $SIG{CHLD} = 'DEFAULT';
         wait;
-        exec {$0}( ( ( -x $0 ) ? () : ($^X) ), $0, @{ $options->{argv} } );
+        exec $^X . ' "' . $0 . '" ' . join(' ', @{$options->{argv}});
     }
-}
-
-sub _compare_index {
-    my ( $one, $two ) = @_;
-    my %clone = %$two;
-    my @changes;
-    while ( my ( $key, $val ) = each %$one ) {
-        if ( !$clone{$key} || ( $clone{$key} ne $val ) ) {
-            push @changes, $key;
-        }
-        delete $clone{$key};
-    }
-    for my $key ( keys %clone ) { push @changes, $key }
-    return \@changes;
 }
 
 sub _get_line {
@@ -305,37 +243,6 @@ sub _get_line {
     1 while $line =~ s/\s\z//;
 
     return $line;
-}
-
-sub _index {
-    my ( $dir, $regex ) = @_;
-    my %index;
-    finddepth(
-        {
-            wanted => sub {
-                my $file = File::Spec->rel2abs($File::Find::name);
-                return unless $file =~ /$regex/;
-                return unless -f $file;
-                my $time = ( stat $file )[9];
-                $index{$file} = $time;
-            },
-            no_chdir => 1
-        },
-        $dir
-    );
-    return \%index;
-}
-
-sub _test {
-    my $file = shift;
-    delete $INC{$file};
-    local $SIG{__WARN__} = sub { };
-    open my $olderr, '>&STDERR';
-    open STDERR, '>', File::Spec->devnull;
-    eval "require '$file'";
-    open STDERR, '>&', $olderr;
-    return $@ if $@;
-    return 0;
 }
 
 =back

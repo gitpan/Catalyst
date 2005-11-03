@@ -1,5 +1,26 @@
 Tis file documents the revision history for Perl extension Catalyst.
 
+5.50
+        - Fixed $c->req->{path} for backwards-compatibility.
+        - Allow debug to be disabled via ENV as well as enabled.
+        - Added -scripts option to catalyst.pl for script updating
+        - Changed helpers to default to long types, Controller instead of C
+        - Added Catalyst::Controller, Catalyst::Model and Catalyst::View
+          base classes
+        - Added JavaScript to debug screen to show and hide specific dumps
+        - Added _DISPATCH, _BEGIN, _AUTO, _ACTION and _END actions
+        - Added multi process external FastCGI support
+          (see myapp_fastcgi.pl -help) (Sam Vilain)
+        - Restarter process in HTTP engine now properly exits when the
+          parent app is shut down.  
+        - Improved performance of restarter loop while watching for
+          changed files.
+        - Restarter will now detect new files added to an app on systems
+          that change directory mtimes when new files are created.
+        - Restarter now properly handles modules that are deleted from an
+          application.
+        - Fixed memory leak in TestApp.
+
 5.49_02 2005-10-26 12:39:00 
         - Whole new dispatcher!
         - Added index action
@@ -55,10 +76,7 @@ Tis file documents the revision history for Perl extension Catalyst.
         - Added MyApp->config->{parse_on_demand} (streaming input)
         - Added $c->req->handle and $c->res->handle
         - Improved documentation
-
-5.34  (not released)
         - Fixed mkpath in Catalyst::Helper (Autrijus Tang)
-        - added $c->req->full_uri method (Jesse Sheidlower)
         - Fixed bug in dispatcher where an invalid path could call a valid
           action. (Andy Grundman)
         - Fixed Helper so it works with CRLF line-endings. (Andy Grundman)

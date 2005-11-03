@@ -90,7 +90,7 @@ sub finalize_cookies {
 sub finalize_error {
     my ( $self, $c ) = @_;
 
-    $c->res->headers->content_type('text/html');
+    $c->res->content_type('text/html; charset=utf-8');
     my $name = $c->config->{name} || 'Catalyst Application';
 
     my ( $title, $error, $infos );
@@ -99,10 +99,11 @@ sub finalize_error {
         # For pretty dumps
         local $Data::Dumper::Terse = 1;
         $error = join '',
-          map { '<code class="error">' . encode_entities($_) . '</code>' }
+          map { '<p><code class="error">' . encode_entities($_) . '</code></p>' }
           @{ $c->error };
         $error ||= 'No output';
         $title = $name = "$name on Catalyst $Catalyst::VERSION";
+        $name = "<h1>$name</h1>";
 
         # Don't show context in the dump
         delete $c->req->{_context};
@@ -117,15 +118,21 @@ sub finalize_error {
         my $req   = encode_entities Dumper $c->req;
         my $res   = encode_entities Dumper $c->res;
         my $stash = encode_entities Dumper $c->stash;
-        $infos = <<"";
-<br/>
-<b><u>Request</u></b><br/>
-<pre>$req</pre>
-<b><u>Response</u></b><br/>
-<pre>$res</pre>
-<b><u>Stash</u></b><br/>
-<pre>$stash</pre>
 
+        my @infos;
+        my $i = 0;
+        for my $dump ( $c->dump_these ) {
+            my $name  = $dump->[0];
+            my $value = encode_entities( Dumper $dump->[1] );
+            push @infos, sprintf <<"EOF", $name, $value;
+<h2><a href="#" onclick="toggleDump('dump_$i'); return false">%s</a></h2>
+<div id="dump_$i">
+    <pre>%s</pre>
+</div>
+EOF
+            $i++;
+        }
+        $infos = join "\n", @infos;
     }
     else {
         $title = $name;
@@ -145,9 +152,26 @@ sub finalize_error {
         $name = '';
     }
     $c->res->body( <<"" );
-<html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
+    <meta http-equiv="Content-Language" content="en" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>$title</title>
+    <script type="text/javascript">
+        <!--
+        function toggleDump (dumpElement) {
+            var e = document.getElementById( dumpElement );
+            if (e.style.display == "none") {
+                e.style.display = "";
+            }
+            else {
+                e.style.display = "none";
+            }
+        }
+        -->
+    </script>
     <style type="text/css">
         body {
             font-family: "Bitstream Vera Sans", "Trebuchet MS", Verdana,
@@ -157,7 +181,11 @@ sub finalize_error {
             margin: 0px;
             padding: 0px;
         }
+        :link, :link:hover, :visited, :visited:hover {
+            color: #ddd;
+        }
         div.box {
+            position: relative;
             background-color: #ccc;
             border: 1px solid #aaa;
             padding: 4px;
@@ -192,6 +220,20 @@ sub finalize_error {
             margin: 1em 0;
             overflow: auto;
             white-space: pre;
+        }
+        div.name h1, div.error p {
+            margin: 0;
+        }
+        h2 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: medium;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+        h1 {
+            font-size: medium;
+            font-weight: normal;
         }
     </style>
 </head>

@@ -47,7 +47,7 @@ sub match {
         $c->req->action($path);
         $c->req->match($path);
         $c->action($action);
-        $c->namespace( $action->prefix );
+        $c->namespace( $action->namespace );
         return 1;
     }
 
@@ -65,8 +65,11 @@ sub register {
     my @register;
 
     foreach my $r ( @{ $attrs->{Path} || [] } ) {
-        unless ( $r =~ m!^/! ) {    # It's a relative path
-            $r = $action->prefix . "/$r";
+        unless ( $r ) {
+            $r = $action->namespace;
+        }
+        elsif ( $r !~ m!^/! ) {    # It's a relative path
+            $r = $action->namespace . "/$r";
         }
         push( @register, $r );
     }
@@ -76,7 +79,7 @@ sub register {
     }
 
     if ( $attrs->{Local} || $attrs->{Relative} ) {
-        push( @register, join( '/', $action->prefix, $action->name ) );
+        push( @register, join( '/', $action->namespace, $action->name ) );
 
         # Register sub name as a relative path
     }

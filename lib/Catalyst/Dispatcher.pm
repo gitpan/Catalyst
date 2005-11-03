@@ -15,7 +15,7 @@ use Tree::Simple::Visitor::FindByPath;
 # Stringify to class
 use overload '""' => sub { return ref shift }, fallback => 1;
 
-__PACKAGE__->mk_accessors(qw/tree dispatch_types/);
+__PACKAGE__->mk_accessors(qw/tree dispatch_types registered_dispatch_types/);
 
 # Preload these action types
 our @PRELOAD = qw/Path Regex/;
@@ -55,56 +55,7 @@ sub dispatch {
     my ( $self, $c ) = @_;
 
     if ( $c->action ) {
-
-        my @containers = $self->get_containers( $c->namespace );
-        my %actions;
-        foreach my $name (qw/begin auto end/) {
-
-            # Go down the container list representing each part of the
-            # current namespace inheritance tree, grabbing the actions hash
-            # of the ActionContainer object and looking for actions of the
-            # appropriate name registered to the namespace
-
-            $actions{$name} = [
-                map    { $_->{$name} }
-                  grep { exists $_->{$name} }
-                  map  { $_->actions } @containers
-            ];
-        }
-
-        # Errors break the normal flow and the end action is instantly run
-        my $error = 0;
-
-        # Execute last begin
-        $c->state(1);
-        if ( my $begin = @{ $actions{begin} }[-1] ) {
-            $begin->execute($c);
-            $error++ if scalar @{ $c->error };
-        }
-
-        # Execute the auto chain
-        my $autorun = 0;
-        for my $auto ( @{ $actions{auto} } ) {
-            last if $error;
-            $autorun++;
-            $auto->execute($c);
-            $error++ if scalar @{ $c->error };
-            last unless $c->state;
-        }
-
-        # Execute the action or last default
-        my $mkay = $autorun ? $c->state ? 1 : 0 : 1;
-        if ($mkay) {
-            unless ($error) {
-                $c->action->execute($c);
-                $error++ if scalar @{ $c->error };
-            }
-        }
-
-        # Execute last end
-        if ( my $end = @{ $actions{end} }[-1] ) {
-            $end->execute($c);
-        }
+        $c->forward( join( '/', '', $c->namespace, '_DISPATCH' ) );
     }
 
     else {
@@ -131,32 +82,26 @@ sub forward {
         return 0;
     }
 
-    # Relative forwards from detach
-    my $caller = ( caller(1) )[0]->isa('Catalyst::Dispatcher')
-      && ( ( caller(2) )[3] =~ /::detach$/ ) ? caller(3) : caller(1);
-
     my $arguments = ( ref( $_[-1] ) eq 'ARRAY' ) ? pop(@_) : $c->req->args;
 
-    my $results = [];
+    my $result;
 
     my $command_copy = $command;
 
     unless ( $command_copy =~ s/^\/// ) {
-        my $namespace =
-          Catalyst::Utils::class2prefix( $caller, $c->config->{case_sensitive} )
-          || '';
+        my $namespace = $c->namespace;
         $command_copy = "${namespace}/${command}";
     }
 
     unless ( $command_copy =~ /\// ) {
-        $results = $c->get_action( $command_copy, '/' );
+        $result = $c->get_action( $command_copy, '/' );
     }
     else {
         my @extra_args;
       DESCEND: while ( $command_copy =~ s/^(.*)\/(\w+)$/$1/ ) {
             my $tail = $2;
-            $results = $c->get_action( $tail, $1 );
-            if ( @{$results} ) {
+            $result = $c->get_action( $tail, $1 );
+            if ( $result ) {
                 $command = $tail;
                 push( @{$arguments}, @extra_args );
                 last DESCEND;
@@ -165,9 +110,11 @@ sub forward {
         }
     }
 
-    unless ( @{$results} ) {
+    unless ( $result ) {
 
-        unless ( $c->components->{$command} ) {
+        my $comp;
+
+        unless ( $comp = $c->component($command) ) {
             my $error =
 qq/Couldn't forward to command "$command". Invalid action or component./;
             $c->error($error);
@@ -175,20 +122,20 @@ qq/Couldn't forward to command "$command". Invalid action or component./;
             return 0;
         }
 
-        my $class  = $command;
+        my $class  = ref $comp;
         my $method = shift || 'process';
 
-        if ( my $code = $c->components->{$class}->can($method) ) {
+        if ( my $code = $class->can($method) ) {
             my $action = Catalyst::Action->new(
                 {
                     name      => $method,
                     code      => $code,
                     reverse   => "$class->$method",
+                    class     => $class,
                     namespace => $class,
-                    prefix    => $class,
                 }
             );
-            $results = [ [$action] ];
+            $result = $action;
         }
 
         else {
@@ -203,12 +150,9 @@ qq/Couldn't forward to command "$command". Invalid action or component./;
     }
 
     local $c->request->{arguments} = [ @{$arguments} ];
+    local $c->{namespace} = $result->namespace;
 
-    for my $result ( @{$results} ) {
-        $result->[0]->execute($c);
-        return if scalar @{ $c->error };
-        last unless $c->state;
-    }
+    $result->execute($c);
 
     return $c->state;
 }
@@ -246,39 +190,39 @@ sub prepare_action {
       if ( $c->debug && @args );
 }
 
-=item $self->get_action( $c, $action, $namespace, $inherit )
+=item $self->get_action( $c, $action, $namespace )
 
 =cut
 
 sub get_action {
-    my ( $self, $c, $action, $namespace, $inherit ) = @_;
-    return [] unless $action;
+    my ( $self, $c, $name, $namespace ) = @_;
+    return unless $name;
     $namespace ||= '';
     $namespace = '' if $namespace eq '/';
-    $inherit ||= 0;
 
     my @match = $self->get_containers($namespace);
 
-    if ($inherit) {    # Return [ [ $act_obj ], ... ] for valid containers
-        return [
-            map    { [ $_->{$action} ] }        # Make [ $action_obj ]
-              grep { defined $_->{$action} }    # If it exists in the container
-              map  { $_->actions }              # Get action hash for container
-              @match
-        ];
-    }
-    else {
-        my $node = $match[-1]->actions;    # Only bother looking at the last one
+    return unless @match;
 
-        if ( defined $node->{$action}
-            && ( $node->{$action}->prefix eq $namespace ) )
-        {
-            return [ [ $node->{$action} ] ];
-        }
-        else {
-            return [];
-        }
+    if ( my $action = $match[-1]->get_action( $c, $name ) )
+    {
+        return $action if $action->namespace eq $namespace;
     }
+}
+
+=item $self->get_actions( $c, $action, $namespace )
+
+=cut
+
+sub get_actions {
+    my ( $self, $c, $action, $namespace ) = @_;
+    return [] unless $action;
+    $namespace ||= '';
+    $namespace = '' if $namespace eq '/';
+
+    my @match = $self->get_containers($namespace);
+
+    return map { $_->get_action($c, $action) } @match;
 }
 
 =item $self->get_containers( $namespace )
@@ -323,56 +267,15 @@ sub get_containers {
     return map { $_->getNodeValue } @match;
 }
 
-=item $self->set_action( $c, $action, $code, $namespace, $attrs )
+sub register {
+    my ( $self, $c, $action ) = @_;
 
-=cut
+    my $namespace = $action->namespace;
+    my $parent    = $self->tree;
+    my $visitor   = Tree::Simple::Visitor::FindByPath->new;
 
-sub set_action {
-    my ( $self, $c, $method, $code, $namespace, $attrs ) = @_;
-
-    my $prefix =
-      Catalyst::Utils::class2prefix( $namespace, $c->config->{case_sensitive} )
-      || '';
-    my %attributes;
-
-    for my $attr ( @{$attrs} ) {
-
-        # Parse out :Foo(bar) into Foo => bar etc (and arrayify)
-
-        my %initialized;
-        $initialized{ ref $_ }++ for @{ $self->dispatch_types };
-
-        if ( my ( $key, $value ) = ( $attr =~ /^(.*?)(?:\(\s*(.+)\s*\))?$/ ) ) {
-
-            # Initialize types
-            my $class = "Catalyst::DispatchType::$key";
-            unless ( $initialized{$class} ) {
-                eval "require $class";
-                push( @{ $self->dispatch_types }, $class->new ) unless $@;
-                $initialized{$class}++;
-            }
-
-            if ( defined $value ) {
-                ( $value =~ s/^'(.*)'$/$1/ ) || ( $value =~ s/^"(.*)"/$1/ );
-            }
-            push( @{ $attributes{$key} }, $value );
-        }
-    }
-
-    if ( $attributes{Private} && ( keys %attributes > 1 ) ) {
-        $c->log->debug( 'Bad action definition "'
-              . join( ' ', @{$attrs} )
-              . qq/" for "$namespace->$method"/ )
-          if $c->debug;
-        return;
-    }
-    return unless keys %attributes;
-
-    my $parent  = $self->tree;
-    my $visitor = Tree::Simple::Visitor::FindByPath->new;
-
-    if ($prefix) {
-        for my $part ( split '/', $prefix ) {
+    if ($namespace) {
+        for my $part ( split '/', $namespace ) {
             $visitor->setSearchPath($part);
             $parent->accept($visitor);
             my $child = $visitor->getResult;
@@ -395,21 +298,19 @@ sub set_action {
         }
     }
 
-    my $reverse = $prefix ? "$prefix/$method" : $method;
-
-    my $action = Catalyst::Action->new(
-        {
-            name       => $method,
-            code       => $code,
-            reverse    => $reverse,
-            namespace  => $namespace,
-            prefix     => $prefix,
-            attributes => \%attributes,
-        }
-    );
-
     # Set the method value
-    $parent->getNodeValue->actions->{$method} = $action;
+    $parent->getNodeValue->actions->{$action->name} = $action;
+
+    my $registered = $self->registered_dispatch_types;
+
+    foreach my $key (keys %{$action->attributes}) {
+            my $class = "Catalyst::DispatchType::$key";
+            unless ( $registered->{$class} ) {
+                eval "require $class";
+                push( @{ $self->dispatch_types }, $class->new ) unless $@;
+                $registered->{$class} = 1;
+            }
+    }
 
     # Pass the action to our dispatch types so they can register it if reqd.
     foreach my $type ( @{ $self->dispatch_types } ) {
@@ -422,9 +323,10 @@ sub set_action {
 =cut
 
 sub setup_actions {
-    my ( $self, $class ) = @_;
+    my ( $self, $c ) = @_;
 
     $self->dispatch_types( [] );
+    $self->registered_dispatch_types( {} );
 
     # Preload action types
     for my $type (@PRELOAD) {
@@ -433,6 +335,7 @@ sub setup_actions {
         Catalyst::Exception->throw( message => qq/Couldn't load "$class"/ )
           if $@;
         push @{ $self->dispatch_types }, $class->new;
+        $self->registered_dispatch_types->{$class} = 1;
     }
 
     # We use a tree
@@ -440,37 +343,10 @@ sub setup_actions {
       Catalyst::ActionContainer->new( { part => '/', actions => {} } );
     $self->tree( Tree::Simple->new( $container, Tree::Simple->ROOT ) );
 
-    for my $comp ( keys %{ $class->components } ) {
+    $c->register_actions( $c );
 
-        # We only setup components that inherit from Catalyst::Base
-        next unless $comp->isa('Catalyst::Base');
-
-        for my $action ( @{ Catalyst::Utils::reflect_actions($comp) } ) {
-            my ( $code, $attrs ) = @{$action};
-            my $name = '';
-            no strict 'refs';
-            my @cache = ( $comp, @{"$comp\::ISA"} );
-            my %namespaces;
-
-            while ( my $namespace = shift @cache ) {
-                $namespaces{$namespace}++;
-                for my $isa ( @{"$comp\::ISA"} ) {
-                    next if $namespaces{$isa};
-                    push @cache, $isa;
-                    $namespaces{$isa}++;
-                }
-            }
-
-            for my $namespace ( keys %namespaces ) {
-                for my $sym ( values %{ $namespace . '::' } ) {
-                    if ( *{$sym}{CODE} && *{$sym}{CODE} == $code ) {
-                        $name = *{$sym}{NAME};
-                        $class->set_action( $name, $code, $comp, $attrs );
-                        last;
-                    }
-                }
-            }
-        }
+    foreach my $comp ( values %{$c->components} ) {
+        $comp->register_actions( $c ) if $comp->can('register_actions');
     }
 
     # Postload action types
@@ -482,7 +358,7 @@ sub setup_actions {
         push @{ $self->dispatch_types }, $class->new;
     }
 
-    return unless $class->debug;
+    return unless $c->debug;
 
     my $privates = Text::ASCIITable->new;
     $privates->setCols( 'Private', 'Class' );
@@ -497,18 +373,21 @@ sub setup_actions {
 
         for my $action ( keys %{$node} ) {
             my $action_obj = $node->{$action};
-            $privates->addRow( "$prefix$action", $action_obj->namespace );
+            next
+              if ( ( $action =~ /^_.*/ )
+                && ( !$c->config->{show_internal_actions} ) );
+            $privates->addRow( "$prefix$action", $action_obj->class );
         }
 
         $walker->( $walker, $_, $prefix ) for $parent->getAllChildren;
     };
 
     $walker->( $walker, $self->tree, '' );
-    $class->log->debug( "Loaded Private actions:\n" . $privates->draw )
+    $c->log->debug( "Loaded Private actions:\n" . $privates->draw )
       if ( @{ $privates->{tbl_rows} } );
 
     # List all public actions
-    $_->list($class) for @{ $self->dispatch_types };
+    $_->list($c) for @{ $self->dispatch_types };
 }
 
 =back
@@ -516,6 +395,7 @@ sub setup_actions {
 =head1 AUTHOR
 
 Sebastian Riedel, C<sri@cpan.org>
+Matt S Trout, C<mst@shadowcatsystems.co.uk>
 
 =head1 COPYRIGHT
 

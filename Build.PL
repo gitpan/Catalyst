@@ -7,12 +7,14 @@ my $build = Module::Build->new(
     module_name        => 'Catalyst',
     requires           => {
         'perl'                              => '5.8.1',
-        'UNIVERSAL::require'                => 0,
+        'UNIVERSAL::require'                => "0.10",
         'Class::Accessor::Fast'             => 0,
         'Class::Data::Inheritable'          => 0,
+        'Class::Inspector'                  => 0,
         'CGI::Cookie'                       => 0,
+        'File::Modified'                    => 0,
         'HTML::Entities'                    => 0,
-        'HTTP::Body'                        => 0,
+        'HTTP::Body'                        => 0.03,
         'HTTP::Headers'                     => 1.59,
         'HTTP::Request'                     => 0,
         'HTTP::Response'                    => 0,
@@ -25,11 +27,13 @@ my $build = Module::Build->new(
         'Template'                          => 0,
         'Text::ASCIITable'                  => 0.17,
         'Test::MockObject'                  => 0,
+        'Time::HiRes'                       => 0,
         'Tree::Simple'                      => 0,
         'Tree::Simple::Visitor::FindByPath' => 0,
         'URI'                               => 1.35,
     },
-    recommends         => { 'Catalyst::Engine::Apache' => 0, },
+    recommends =>
+      { 'Catalyst::Engine::Apache' => 0, FCGI => 0, 'FCGI::ProcManager' => 0 },
     create_makefile_pl => 'passthrough',
     create_readme      => 1,
     script_files       => [ glob('script/*') ],
@@ -52,7 +56,15 @@ print(
 print( '*' x 80, "\n" );
 
 eval "use FCGI";
-print qq/Install "FCGI" for FastCGI support.\n/ if $@;
+if ($@) {
+    print qq/Install "FCGI" for FastCGI support.\n/;
+}
+else {
+    eval "use FCGI::ProcManager";
+    print
+qq/Install "FCGI::ProcManager" for multiprocess FastCGI external support.\n/
+      if ($@);
+}
 
 print qq/
 *** IMPORTANT NOTE: ***

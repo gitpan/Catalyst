@@ -38,12 +38,12 @@ our $DETACH    = "catalyst_detach\n";
 require Module::Pluggable::Fast;
 
 # Helper script generation
-our $CATALYST_SCRIPT_GEN = 8;
+our $CATALYST_SCRIPT_GEN = 10;
 
 __PACKAGE__->mk_classdata($_)
   for qw/components arguments dispatcher engine log/;
 
-our $VERSION = '5.49_02';
+our $VERSION = '5.49_03';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -426,6 +426,7 @@ sub uri_for {
     # massage match, empty if absolute path
     $match =~ s/^\///;
     $match .= '/' if $match;
+    $path ||= '';
     $match = '' if $path =~ /^\//;
     $path =~ s/^\///;
 
@@ -575,20 +576,24 @@ sub welcome_message {
     my $name   = $c->config->{name};
     my $logo   = $c->uri_for('/static/images/catalyst_logo.png');
     my $prefix = Catalyst::Utils::appprefix( ref $c );
+    $c->response->content_type('text/html; charset=utf-8');
     return <<"EOF";
-<html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
     <head>
+	<meta http-equiv="Content-Language" content="en" />
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
         <title>$name on Catalyst $VERSION</title>
         <style type="text/css">
             body {
-                text-align: center;
-                padding-left: 50%;
                 color: #000;
                 background-color: #eee;
             }
             div#content {
                 width: 640px;
-                margin-left: -320px;
+                margin-left: auto;
+                margin-right: auto;
                 margin-top: 10px;
                 margin-bottom: 10px;
                 text-align: left;
@@ -641,7 +646,8 @@ sub welcome_message {
                 float: right;
                 margin-left: 10px;
             }
-            b#appname {
+            span#appname {
+                font-weight: bold;
                 font-size: 1.6em;
             }
         </style>
@@ -649,12 +655,12 @@ sub welcome_message {
     <body>
         <div id="content">
             <div id="topbar">
-                <h1><b id="appname">$name</b> on <a href="http://catalyst.perl.org">Catalyst</a>
+                <h1><span id="appname">$name</span> on <a href="http://catalyst.perl.org">Catalyst</a>
                     $VERSION</h1>
              </div>
              <div id="answers">
                  <p>
-                 <img src="$logo"/>
+                 <img src="$logo" alt="Catalyst Logo" />
                  </p>
                  <p>Welcome to the wonderful world of Catalyst.
                     This <a href="http://en.wikipedia.org/wiki/MVC">MVC</a>
@@ -669,13 +675,13 @@ sub welcome_message {
 perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual.pod">Catalyst::Manual</a></code></pre>
                  <h2>What to do next?</h2>
                  <p>Next it's time to write an actual application. Use the
-                    helper scripts to generate <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AController%3A%3A&mode=all">controllers</a>,
-                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AModel%3A%3A&mode=all">models</a> and
-                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AView%3A%3A&mode=all">views</a>,
+                    helper scripts to generate <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AController%3A%3A&amp;mode=all">controllers</a>,
+                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AModel%3A%3A&amp;mode=all">models</a> and
+                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AView%3A%3A&amp;mode=all">views</a>,
                     they can save you a lot of work.</p>
                     <pre><code>script/${prefix}_create.pl -help</code></pre>
                     <p>Also, be sure to check out the vast and growing
-                    collection of <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3APlugin%3A%3A&mode=all">plugins for Catalyst on CPAN</a>,
+                    collection of <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3APlugin%3A%3A&amp;mode=all">plugins for Catalyst on CPAN</a>,
                     you are likely to find what you need there.
                     </p>
 
@@ -749,6 +755,18 @@ Dispatch request to actions.
 
 sub dispatch { my $c = shift; $c->dispatcher->dispatch( $c, @_ ) }
 
+=item dump_these
+
+Returns a list of 2-element array references (name, structure) pairs that will
+be dumped on the error page in debug mode.
+
+=cut
+
+sub dump_these {
+    my $c = shift;
+    [ Request => $c->req ], [ Response => $c->res ], [ Stash => $c->stash ],;
+}
+
 =item $c->execute($class, $coderef)
 
 Execute a coderef in given class and catch exceptions.
@@ -784,7 +802,11 @@ sub execute {
         {
             my ( $elapsed, @state ) =
               $c->benchmark( $code, $class, $c, @{ $c->req->args } );
-            push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
+            unless ( ( $code->name =~ /^_.*/ )
+                && ( !$c->config->{show_internal_actions} ) )
+            {
+                push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
+            }
             $c->state(@state);
         }
         else {
@@ -919,13 +941,21 @@ Finalize uploads.  Cleans up any temporary files.
 
 sub finalize_uploads { my $c = shift; $c->engine->finalize_uploads( $c, @_ ) }
 
-=item $c->get_action( $action, $namespace, $inherit )
+=item $c->get_action( $action, $namespace )
 
 Get an action in a given namespace.
 
 =cut
 
 sub get_action { my $c = shift; $c->dispatcher->get_action( $c, @_ ) }
+
+=item $c->get_actions( $action, $namespace )
+
+Get all actions of a given name in a namespace and all base namespaces.
+
+=cut
+
+sub get_actions { my $c = shift; $c->dispatcher->get_actions( $c, @_ ) }
 
 =item handle_request( $class, @arguments )
 
@@ -1461,6 +1491,38 @@ qq/Couldn't load engine "$engine" (maybe you forgot to install it?), "$@"/
         );
     }
 
+    # check for old engines that are no longer compatible
+    my $old_engine;
+    if ( $engine->isa('Catalyst::Engine::Apache')
+        && !Catalyst::Engine::Apache->VERSION )
+    {
+        $old_engine = 1;
+    }
+
+    elsif ( $engine->isa('Catalyst::Engine::Server::Base')
+        && Catalyst::Engine::Server->VERSION le '0.02' )
+    {
+        $old_engine = 1;
+    }
+
+    elsif ($engine->isa('Catalyst::Engine::HTTP::POE')
+        && $engine->VERSION eq '0.01' )
+    {
+        $old_engine = 1;
+    }
+
+    elsif ($engine->isa('Catalyst::Engine::Zeus')
+        && $engine->VERSION eq '0.01' )
+    {
+        $old_engine = 1;
+    }
+
+    if ($old_engine) {
+        Catalyst::Exception->throw( message =>
+              qq/Engine "$engine" is not supported by this version of Catalyst/
+        );
+    }
+
     # engine instance
     $class->engine( $engine->new );
 }
@@ -1561,6 +1623,16 @@ in template systems.
 sub version { return $Catalyst::VERSION }
 
 =back
+
+=head1 INTERNAL ACTIONS
+
+Catalyst uses internal actions like C<_DISPATCH>, C<_BEGIN>, C<_AUTO>
+C<_ACTION> and C<_END>, these are by default not shown in the private
+action table.
+
+But you can deactivate this with a config parameter.
+
+    MyApp->config->{show_internal_actions} = 1;
 
 =head1 CASE SENSITIVITY
 
@@ -1704,6 +1776,8 @@ Marcus Ramberg
 Matt S Trout
 
 Robert Sedlacek
+
+Sam Vilain
 
 Tatsuhiko Miyagawa
 
