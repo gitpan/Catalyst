@@ -123,16 +123,16 @@ then C<base> is C<http://localhost:3000/>.
 
 sub base {
     my ( $self, $base ) = @_;
-    
+
     return $self->{base} unless $base;
-    
+
     $self->{base} = $base;
-    
+
     # set the value in path for backwards-compat
     if ( $self->uri ) {
         $self->path;
     }
-    
+
     return $self->{base};
 }
 
@@ -282,7 +282,7 @@ is a method for accessing parameters in $c->req->parameters.
     @values = $c->request->param( 'foo' );
     @params = $c->request->param;
 
-Like C<CGI>, and B<unlike> previous versions of Catalyst, passing multiple
+Like L<CGI>, and B<unlike> previous versions of Catalyst, passing multiple
 arguments to this method, like this:
 
 	$c->request( 'foo', 'bar', 'gorch', 'quxx' );
@@ -502,7 +502,7 @@ Returns a URI object for the request.
 
 =item $req->user
 
-Contains the user name of user if authentication check was successful.
+Returns the user.
 
 =item $req->user_agent
 

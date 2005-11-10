@@ -494,7 +494,7 @@ use warnings;
 #
 # Set flags and add plugins for the application
 #
-#        -Debug : activates the debug mode for very useful log messages
+#         -Debug: activates the debug mode for very useful log messages
 # Static::Simple: will serve static files from the applications root directory
 #
 use Catalyst qw/-Debug Static::Simple/;
@@ -711,7 +711,7 @@ pod2usage(1) if $help;
 
 =head1 SYNOPSIS
 
-[% appprefix %]_server.pl [options]
+[% appprefix %]_fastcgi.pl [options]
  
  Options:
    -? -help      display this help and exits
@@ -752,6 +752,7 @@ use Pod::Usage;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 
+my $debug         = 0;
 my $fork          = 0;
 my $help          = 0;
 my $host          = undef;
@@ -763,6 +764,7 @@ my $restart_regex = '\.yml$|\.yaml$|\.pm$';
 my @argv = @ARGV;
 
 GetOptions(
+    'debug|d'           => \$debug,
     'fork'              => \$fork,
     'help|?'            => \$help,
     'host=s'            => \$host,
@@ -776,6 +778,9 @@ pod2usage(1) if $help;
 
 if ( $restart ) {
     $ENV{CATALYST_ENGINE} = 'HTTP::Restarter';
+}
+if ( $debug ) {
+    $ENV{CATALYST_DEBUG} = 1;
 }
 
 require [% name %];
@@ -799,6 +804,7 @@ require [% name %];
 [% appprefix %]_server.pl [options]
 
  Options:
+   -d -debug          force debug mode
    -f -fork           handle each request in a new process
                       (defaults to false)
    -? -help           display this help and exits

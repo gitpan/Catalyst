@@ -11,15 +11,20 @@ use Catalyst::Request::Upload;
 use Catalyst::Response;
 use Catalyst::Utils;
 use NEXT;
-use Text::ASCIITable;
+use Text::SimpleTable;
 use Path::Class;
 use Time::HiRes qw/gettimeofday tv_interval/;
 use URI;
 use Scalar::Util qw/weaken/;
+use attributes;
 
 __PACKAGE__->mk_accessors(
-    qw/counter depth request response state action namespace/
+    qw/counter request response state action stack namespace/
 );
+
+attributes->import( __PACKAGE__, \&namespace, 'lvalue' );
+
+sub depth { scalar @{ shift->stack || [] }; }
 
 # Laziness++
 *comp = \&component;
@@ -41,9 +46,15 @@ require Module::Pluggable::Fast;
 our $CATALYST_SCRIPT_GEN = 10;
 
 __PACKAGE__->mk_classdata($_)
-  for qw/components arguments dispatcher engine log/;
+  for qw/components arguments dispatcher engine log dispatcher_class
+  engine_class context_class request_class response_class/;
 
-our $VERSION = '5.49_03';
+__PACKAGE__->dispatcher_class('Catalyst::Dispatcher');
+__PACKAGE__->engine_class('Catalyst::Engine::CGI');
+__PACKAGE__->request_class('Catalyst::Request');
+__PACKAGE__->response_class('Catalyst::Response');
+
+our $VERSION = '5.49_04';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -219,6 +230,23 @@ sub component {
 
 Returns a hashref containing your applications settings.
 
+=cut
+
+=item $c->controller($name)
+
+Get a L<Catalyst::Controller> instance by name.
+
+    $c->controller('Foo')->do_stuff;
+
+=cut
+
+sub controller {
+    my ( $c, $name ) = @_;
+    my $controller = $c->comp("Controller::$name");
+    return $controller if $controller;
+    return $c->comp("C::$name");
+}
+
 =item debug
 
 Overload to enable debug messages.
@@ -256,6 +284,21 @@ from the function.
 =cut
 
 sub forward { my $c = shift; $c->dispatcher->forward( $c, @_ ) }
+
+=item $c->model($name)
+
+Get a L<Catalyst::Model> instance by name.
+
+    $c->model('Foo')->do_stuff;
+
+=cut
+
+sub model {
+    my ( $c, $name ) = @_;
+    my $model = $c->comp("Model::$name");
+    return $model if $model;
+    return $c->comp("M::$name");
+}
 
 =item $c->namespace
 
@@ -348,12 +391,8 @@ sub setup {
         }
 
         if (@plugins) {
-            my $t = Text::ASCIITable->new;
-            $t->setOptions( 'hide_HeadRow',  1 );
-            $t->setOptions( 'hide_HeadLine', 1 );
-            $t->setCols('Class');
-            $t->setColWidth( 'Class', 75, 1 );
-            $t->addRow($_) for @plugins;
+            my $t = Text::SimpleTable->new(76);
+            $t->row($_) for @plugins;
             $class->log->debug( "Loaded plugins:\n" . $t->draw );
         }
 
@@ -384,14 +423,13 @@ sub setup {
     $class->setup_components;
 
     if ( $class->debug ) {
-        my $t = Text::ASCIITable->new;
-        $t->setOptions( 'hide_HeadRow',  1 );
-        $t->setOptions( 'hide_HeadLine', 1 );
-        $t->setCols('Class');
-        $t->setColWidth( 'Class', 75, 1 );
-        $t->addRow($_) for sort keys %{ $class->components };
+        my $t = Text::SimpleTable->new( [ 65, 'Class' ], [ 8, 'Type' ] );
+        for my $comp ( sort keys %{ $class->components } ) {
+            my $type = ref $class->components->{$comp} ? 'instance' : 'class';
+            $t->row( $comp, $type );
+        }
         $class->log->debug( "Loaded components:\n" . $t->draw )
-          if ( @{ $t->{tbl_rows} } );
+          if ( keys %{ $class->components } );
     }
 
     # Add our self to components, since we are also a component
@@ -563,6 +601,21 @@ sub stash {
         }
     }
     return $c->{stash};
+}
+
+=item $c->view($name)
+
+Get a L<Catalyst::View> instance by name.
+
+    $c->view('Foo')->do_stuff;
+
+=cut
+
+sub view {
+    my ( $c, $name ) = @_;
+    my $view = $c->comp("View::$name");
+    return $view if $view;
+    return $c->comp("V::$name");
 }
 
 =item $c->welcome_message
@@ -738,6 +791,10 @@ sub benchmark {
 
 Contains the components.
 
+=item $c->context_class($class)
+
+Contains the context class.
+
 =item $c->counter
 
 Returns a hashref containing coderefs and execution counts.
@@ -755,6 +812,10 @@ Dispatch request to actions.
 
 sub dispatch { my $c = shift; $c->dispatcher->dispatch( $c, @_ ) }
 
+=item $c->dispatcher_class($class)
+
+Contains the dispatcher class.
+
 =item dump_these
 
 Returns a list of 2-element array references (name, structure) pairs that will
@@ -766,6 +827,10 @@ sub dump_these {
     my $c = shift;
     [ Request => $c->req ], [ Response => $c->res ], [ Stash => $c->stash ],;
 }
+
+=item $c->engine_class($class)
+
+Contains the engine class.
 
 =item $c->execute($class, $coderef)
 
@@ -796,7 +861,7 @@ sub execute {
 
         $action = "-> $action" if $callsub =~ /forward$/;
     }
-    $c->{depth}++;
+    push( @{ $c->stack }, $code );
     eval {
         if ( $c->debug )
         {
@@ -813,18 +878,16 @@ sub execute {
             $c->state( &$code( $class, $c, @{ $c->req->args } ) || 0 );
         }
     };
-    $c->{depth}--;
+    pop( @{ $c->stack } );
 
     if ( my $error = $@ ) {
 
-        if ( $error eq $DETACH ) { die $DETACH if $c->{depth} > 1 }
+        if ( $error eq $DETACH ) { die $DETACH if $c->depth > 1 }
         else {
             unless ( ref $error ) {
                 chomp $error;
                 $error = qq/Caught exception "$error"/;
             }
-
-            $c->log->error($error);
             $c->error($error);
             $c->state(0);
         }
@@ -840,6 +903,10 @@ Finalize request.
 
 sub finalize {
     my $c = shift;
+
+    for my $error ( @{ $c->error } ) {
+        $c->log->error($error);
+    }
 
     $c->finalize_uploads;
 
@@ -947,7 +1014,7 @@ Get an action in a given namespace.
 
 =cut
 
-sub get_action { my $c = shift; $c->dispatcher->get_action( $c, @_ ) }
+sub get_action { my $c = shift; $c->dispatcher->get_action(@_) }
 
 =item $c->get_actions( $action, $namespace )
 
@@ -984,12 +1051,9 @@ sub handle_request {
             $elapsed = sprintf '%f', $elapsed;
             my $av = sprintf '%.3f',
               ( $elapsed == 0 ? '??' : ( 1 / $elapsed ) );
-            my $t = Text::ASCIITable->new;
-            $t->setCols( 'Action', 'Time' );
-            $t->setColWidth( 'Action', 64, 1 );
-            $t->setColWidth( 'Time',   9,  1 );
+            my $t = Text::SimpleTable->new( [ 64, 'Action' ], [ 9, 'Time' ] );
 
-            for my $stat (@stats) { $t->addRow( $stat->[0], $stat->[1] ) }
+            for my $stat (@stats) { $t->row( $stat->[0], $stat->[1] ) }
             $class->log->info(
                 "Request took ${elapsed}s ($av/s)\n" . $t->draw );
         }
@@ -1017,33 +1081,36 @@ into a Catalyst context .
 sub prepare {
     my ( $class, @arguments ) = @_;
 
-    my $c = bless {
-        counter => {},
-        depth   => 0,
-        request => Catalyst::Request->new(
-            {
-                arguments        => [],
-                body_parameters  => {},
-                cookies          => {},
-                headers          => HTTP::Headers->new,
-                parameters       => {},
-                query_parameters => {},
-                secure           => 0,
-                snippets         => [],
-                uploads          => {}
-            }
-        ),
-        response => Catalyst::Response->new(
-            {
-                body    => '',
-                cookies => {},
-                headers => HTTP::Headers->new(),
-                status  => 200
-            }
-        ),
-        stash => {},
-        state => 0
-    }, $class;
+    $class->context_class( ref $class || $class ) unless $class->context_class;
+    my $c = $class->context_class->new(
+        {
+            counter => {},
+            stack   => [],
+            request => $class->request_class->new(
+                {
+                    arguments        => [],
+                    body_parameters  => {},
+                    cookies          => {},
+                    headers          => HTTP::Headers->new,
+                    parameters       => {},
+                    query_parameters => {},
+                    secure           => 0,
+                    snippets         => [],
+                    uploads          => {}
+                }
+            ),
+            response => $class->response_class->new(
+                {
+                    body    => '',
+                    cookies => {},
+                    headers => HTTP::Headers->new(),
+                    status  => 200
+                }
+            ),
+            stash => {},
+            state => 0
+        }
+    );
 
     # For on-demand data
     $c->request->{_context}  = $c;
@@ -1107,15 +1174,11 @@ sub prepare_body {
     $c->prepare_uploads;
 
     if ( $c->debug && keys %{ $c->req->body_parameters } ) {
-        my $t = Text::ASCIITable->new;
-        $t->setCols( 'Key', 'Value' );
-        $t->setColWidth( 'Key',   37, 1 );
-        $t->setColWidth( 'Value', 36, 1 );
-        $t->alignCol( 'Value', 'right' );
+        my $t = Text::SimpleTable->new( [ 37, 'Key' ], [ 36, 'Value' ] );
         for my $key ( sort keys %{ $c->req->body_parameters } ) {
             my $param = $c->req->body_parameters->{$key};
             my $value = defined($param) ? $param : '';
-            $t->addRow( $key,
+            $t->row( $key,
                 ref $value eq 'ARRAY' ? ( join ', ', @$value ) : $value );
         }
         $c->log->debug( "Body Parameters are:\n" . $t->draw );
@@ -1203,15 +1266,11 @@ sub prepare_query_parameters {
     $c->engine->prepare_query_parameters( $c, @_ );
 
     if ( $c->debug && keys %{ $c->request->query_parameters } ) {
-        my $t = Text::ASCIITable->new;
-        $t->setCols( 'Key', 'Value' );
-        $t->setColWidth( 'Key',   37, 1 );
-        $t->setColWidth( 'Value', 36, 1 );
-        $t->alignCol( 'Value', 'right' );
+        my $t = Text::SimpleTable->new( [ 37, 'Key' ], [ 36, 'Value' ] );
         for my $key ( sort keys %{ $c->req->query_parameters } ) {
             my $param = $c->req->query_parameters->{$key};
             my $value = defined($param) ? $param : '';
-            $t->addRow( $key,
+            $t->row( $key,
                 ref $value eq 'ARRAY' ? ( join ', ', @$value ) : $value );
         }
         $c->log->debug( "Query Parameters are:\n" . $t->draw );
@@ -1246,17 +1305,16 @@ sub prepare_uploads {
     $c->engine->prepare_uploads( $c, @_ );
 
     if ( $c->debug && keys %{ $c->request->uploads } ) {
-        my $t = Text::ASCIITable->new;
-        $t->setCols( 'Key', 'Filename', 'Type', 'Size' );
-        $t->setColWidth( 'Key',      12, 1 );
-        $t->setColWidth( 'Filename', 28, 1 );
-        $t->setColWidth( 'Type',     18, 1 );
-        $t->setColWidth( 'Size',     9,  1 );
-        $t->alignCol( 'Size', 'left' );
+        my $t = Text::SimpleTable->new(
+            [ 12, 'Key' ],
+            [ 28, 'Filename' ],
+            [ 18, 'Type' ],
+            [ 9,  'Size' ]
+        );
         for my $key ( sort keys %{ $c->request->uploads } ) {
             my $upload = $c->request->uploads->{$key};
             for my $u ( ref $upload eq 'ARRAY' ? @{$upload} : ($upload) ) {
-                $t->addRow( $key, $u->filename, $u->type, $u->size );
+                $t->row( $key, $u->filename, $u->type, $u->size );
             }
         }
         $c->log->debug( "File Uploads are:\n" . $t->draw );
@@ -1270,6 +1328,14 @@ Prepare the output for writing.
 =cut
 
 sub prepare_write { my $c = shift; $c->engine->prepare_write( $c, @_ ) }
+
+=item $c->request_class($class)
+
+Contains the request class.
+
+=item $c->response_class($class)
+
+Contains the response class.
 
 =item $c->read( [$maxlength] )
 
@@ -1319,11 +1385,11 @@ sub setup_components {
     my $callback = sub {
         my ( $component, $context ) = @_;
 
-        unless ( $component->isa('Catalyst::Base') ) {
+        unless ( $component->isa('Catalyst::Component') ) {
             return $component;
         }
 
-        my $suffix = Catalyst::Utils::class2classsuffix($component);
+        my $suffix = Catalyst::Utils::class2classsuffix($class);
         my $config = $class->config->{$suffix} || {};
 
         my $instance;
@@ -1391,7 +1457,7 @@ sub setup_dispatcher {
     }
 
     unless ($dispatcher) {
-        $dispatcher = 'Catalyst::Dispatcher';
+        $dispatcher = $class->dispatcher_class;
     }
 
     $dispatcher->require;
@@ -1480,7 +1546,7 @@ sub setup_engine {
     }
 
     unless ($engine) {
-        $engine = 'Catalyst::Engine::CGI';
+        $engine = $class->engine_class;
     }
 
     $engine->require;
@@ -1563,7 +1629,14 @@ sub setup_log {
         $class->log( Catalyst::Log->new );
     }
 
-    if ( $ENV{CATALYST_DEBUG} || $ENV{ uc($class) . '_DEBUG' } || $debug ) {
+    my $app_flag = Catalyst::Utils::class2env($class) . '_DEBUG';
+
+    if (
+          ( defined( $ENV{CATALYST_DEBUG} ) || defined( $ENV{$app_flag} ) )
+        ? ( $ENV{CATALYST_DEBUG} || $ENV{$app_flag} )
+        : $debug
+      )
+    {
         no strict 'refs';
         *{"$class\::debug"} = sub { 1 };
         $class->log->debug('Debug messages enabled');
@@ -1595,6 +1668,10 @@ sub setup_plugins {
         }
     }
 }
+
+=item $c->stack
+
+Contains the stack.
 
 =item $c->write( $data )
 
@@ -1745,6 +1822,8 @@ Arthur Bergman
 
 Autrijus Tang
 
+Brian Cassidy
+
 Christian Hansen
 
 Christopher Hicks
@@ -1778,6 +1857,8 @@ Matt S Trout
 Robert Sedlacek
 
 Sam Vilain
+
+Sascha Kiefer
 
 Tatsuhiko Miyagawa
 

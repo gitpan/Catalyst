@@ -2,7 +2,7 @@ package Catalyst::DispatchType::Path;
 
 use strict;
 use base qw/Catalyst::DispatchType/;
-use Text::ASCIITable;
+use Text::SimpleTable;
 
 =head1 NAME
 
@@ -24,16 +24,13 @@ See L<Catalyst>.
 
 sub list {
     my ( $self, $c ) = @_;
-    my $paths = Text::ASCIITable->new;
-    $paths->setCols( 'Path', 'Private' );
-    $paths->setColWidth( 'Path',  36, 1 );
-    $paths->setColWidth( 'Private', 37, 1 );
+    my $paths = Text::SimpleTable->new( [ 36, 'Path' ], [ 37, 'Private' ] );
     for my $path ( sort keys %{ $self->{paths} } ) {
         my $action = $self->{paths}->{$path};
-        $paths->addRow( "/$path", "/$action" );
+        $paths->row( "/$path", "/$action" );
     }
     $c->log->debug( "Loaded Path actions:\n" . $paths->draw )
-      if ( @{ $paths->{tbl_rows} } );
+      if ( keys %{ $self->{paths} } );
 }
 
 =item $self->match( $c, $path )
@@ -65,7 +62,7 @@ sub register {
     my @register;
 
     foreach my $r ( @{ $attrs->{Path} || [] } ) {
-        unless ( $r ) {
+        unless ($r) {
             $r = $action->namespace;
         }
         elsif ( $r !~ m!^/! ) {    # It's a relative path
@@ -84,10 +81,19 @@ sub register {
         # Register sub name as a relative path
     }
 
-    foreach my $r (@register) {
-        $r =~ s!^/!!;
-        $self->{paths}{$r} = $action;
-    }
+    $self->register_path( $c, $_, $action ) for @register;
+    return 1 if @register;
+    return 0;
+}
+
+=item $self->register_path($c, $path, $action)
+
+=cut
+
+sub register_path {
+    my ( $self, $c, $path, $action ) = @_;
+    $path =~ s!^/!!;
+    $self->{paths}{$path} = $action;
 }
 
 =back
