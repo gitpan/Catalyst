@@ -85,7 +85,12 @@ sub forward {
         return 0;
     }
 
-    my $arguments = ( ref( $_[-1] ) eq 'ARRAY' ) ? pop(@_) : $c->req->args;
+    my $local_args = 0;
+    my $arguments  = $c->req->args;
+    if ( ref( $_[-1] ) eq 'ARRAY' ) {
+        $arguments  = pop(@_);
+        $local_args = 1;
+    }
 
     my $result;
 
@@ -106,8 +111,9 @@ sub forward {
                 my $tail = $2;
                 $result = $c->get_action( $tail, $1 );
                 if ($result) {
-                    $command = $tail;
-                    push( @{$arguments}, @extra_args );
+                    $local_args = 1;
+                    $command    = $tail;
+                    unshift( @{$arguments}, @extra_args );
                     last DESCEND;
                 }
                 unshift( @extra_args, $tail );
@@ -135,7 +141,9 @@ qq/Couldn't forward to command "$command". Invalid action or component./;
                     code      => $code,
                     reverse   => "$class->$method",
                     class     => $class,
-                    namespace => $class,
+                    namespace => Catalyst::Utils::class2prefix(
+                        $class, $c->config->{case_sensitive}
+                    ),
                 }
             );
             $result = $action;
@@ -152,9 +160,11 @@ qq/Couldn't forward to command "$command". Invalid action or component./;
 
     }
 
-    local $c->request->{arguments} = [ @{$arguments} ];
-
-    $result->execute($c);
+    if ($local_args) {
+        local $c->request->{arguments} = [ @{$arguments} ];
+        $result->execute($c);
+    }
+    else { $result->execute($c) }
 
     return $c->state;
 }
@@ -268,6 +278,10 @@ sub get_containers {
     return map { $_->getNodeValue } @match;
 }
 
+=item $self->register( $c, $action )
+
+=cut
+
 sub register {
     my ( $self, $c, $action ) = @_;
 
@@ -367,9 +381,9 @@ sub setup_actions {
     return unless $c->debug;
 
     my $privates = Text::SimpleTable->new(
-        [ 24, 'Private' ],
-        [ 23, 'Class' ],
-        [ 23, 'Method' ]
+        [ 20, 'Private' ],
+        [ 38, 'Class' ],
+        [ 12, 'Method' ]
     );
 
     my $has_private = 0;

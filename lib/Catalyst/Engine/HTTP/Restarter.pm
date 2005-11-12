@@ -12,10 +12,7 @@ sub run {
     $options ||= {};
 
     # Setup restarter
-    my $restarter;
-    my $parent = $$;
-
-    unless ( $restarter = fork ) {
+    unless ( my $restarter = fork ) {
 
         # Prepare
         close STDIN;
@@ -54,7 +51,7 @@ sub run {
 
                 # build the Kill request
                 my $req =
-                  HTTP::Request->new( 'KILL', '/',
+                  HTTP::Request->new( 'RESTART', '/',
                     HTTP::Headers->new( 'Connection' => 'close' ) );
                 $req->protocol('HTTP/1.0');
 
