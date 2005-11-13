@@ -20,17 +20,18 @@ SYNOPSIS
         use Catalyst qw/-Debug/; # include plugins here as well
     
         sub foo : Global { # called for /foo, /foo/1, /foo/1/2, etc.
-            my ( $self, $c, @args ) = @_; # args are qw/on you/ for /foo/on/you
-            $c->stash->{template} = 'foo.tt';
+            my ( $self, $c, @args ) = @_; # args are qw/1 2/ for /foo/1/2
+            $c->stash->{template} = 'foo.tt'; # set the template
             # lookup something from db -- stash vars are passed to TT
-            $c->stash->{data} = MyApp::Model::Database::Foo->search;
+            $c->stash->{data} = 
+              MyApp::Model::Database::Foo->search( { country => $args[0] } );
             if ( $c->req->params->{bar} ) { # access GET or POST parameters
                 $c->forward( 'bar' ); # process another action
                 # do something else after forward returns            
             }
         }
     
-        # The foo.tt TT template can easily use the stash data from the database
+        # The foo.tt TT template can use the stash data from the database
         [% WHILE (item = data.next) %]
             [% item.foo %]
         [% END %]
@@ -38,20 +39,17 @@ SYNOPSIS
         # called for /bar/of/soap, /bar/of/soap/10, etc.
         sub bar : Path('/bar/of/soap') { ... }
 
-        # called for / and only /, no other args
-        sub baz : Path  { ... } 
-
-        # called for all actions, from the top-most controller inwards
+        # called for all actions, from the top-most controller downwards
         sub auto : Private { 
             my ( $self, $c ) = @_;
             if ( !$c->user ) {
                 $c->res->redirect( '/login' ); # require login
                 return 0; # abort request and go immediately to end()
             }
-            return 1;
+            return 1; # success; carry on to next action
         }
     
-        # called after the main action is finished
+        # called after all actions are finished
         sub end : Private { 
             my ( $self, $c ) = @_;
             if ( scalar @{ $c->error } ) { ... } # handle errors
@@ -63,8 +61,11 @@ SYNOPSIS
         # called for /foo/bar
         sub bar : Local { ... }
     
-        # overrides /foo, but not /foo/1, etc.
-        sub index : Path { ... }
+        # called for /blargle
+        sub blargle : Global { ... }
+    
+        # an index action matches /foo, but not /foo/1, etc.
+        sub index : Private { ... }
     
         ### in MyApp/Controller/Foo/Bar.pm
         # called for /foo/bar/baz
@@ -93,13 +94,13 @@ DESCRIPTION
 
         use Catalyst qw/My::Module/;
 
-    Special flags like -Debug and -Engine can also be specified as arguments
-    when Catalyst is loaded:
+    Special flags like "-Debug" and "-Engine" can also be specified as
+    arguments when Catalyst is loaded:
 
         use Catalyst qw/-Debug My::Module/;
 
     The position of plugins and flags in the chain is important, because
-    they are loaded in exactly the order that they appear.
+    they are loaded in exactly the order in which they appear.
 
     The following flags are supported:
 
@@ -113,7 +114,9 @@ DESCRIPTION
             use Catalyst qw/-Engine=CGI/;
 
     -Home
-        Forces Catalyst to use a specific home directory.
+        Forces Catalyst to use a specific home directory, e.g.:
+
+            use Catalyst qw[-Home=/usr/sri];
 
     -Log
         Specifies log level.
@@ -122,26 +125,27 @@ METHODS
   Information about the current request
     $c->action
         Returns a Catalyst::Action object for the current action, which
-        stringifies to the action name.
+        stringifies to the action name. See Catalyst::Action.
 
     $c->namespace
         Returns the namespace of the current action, i.e., the uri prefix
-        corresponding to the controller of the current action.
+        corresponding to the controller of the current action. For example:
+
+            # in Controller::Foo::Bar
+            $c->namespace; # returns 'foo/bar';
 
     $c->request
     $c->req
-        Returns the current Catalyst::Request object.
-
-            my $req = $c->req;
+        Returns the current Catalyst::Request object. See Catalyst::Request.
 
   Processing and response to the current request
     $c->forward( $action [, \@arguments ] )
     $c->forward( $class, $method, [, \@arguments ] )
         Forwards processing to a private action. If you give a class name
-        but no method, process() is called. You may also optionally pass
+        but no method, "process()" is called. You may also optionally pass
         arguments in an arrayref. The action will receive the arguments in
-        @_ and $c->req->args. Upon returning from the function,
-        $c->req->args will be restored to the previous values.
+        @_ and "$c->req->args". Upon returning from the function,
+        "$c->req->args" will be restored to the previous values.
 
             $c->forward('/foo');
             $c->forward('index');
@@ -171,12 +175,12 @@ METHODS
     $c->res
         Returns the current Catalyst::Response object.
 
-            my $res = $c->res;
-
     $c->stash
         Returns a hashref to the stash, which may be used to store data and
-        pass it between components. You can also set hash keys by passing
-        arguments. The stash is automatically sent to the view.
+        pass it between components during a request. You can also set hash
+        keys by passing arguments. The stash is automatically sent to the
+        view. The stash is cleared at the end of a request; it cannot be
+        used for persistent storage.
 
             $c->stash->{foo} = $bar;
             $c->stash( { moose => 'majestic', qux => 0 } );
@@ -192,7 +196,8 @@ METHODS
     $c->comp($name)
     $c->component($name)
         Gets a component object by name. This method is no longer
-        recommended. $c->controller, $c->model, and $c->view should be used
+        recommended, unless you want to get a specific component by full
+        class. "$c->controller", "$c->model", and "$c->view" should be used
         instead.
 
     $c->controller($name)
@@ -221,10 +226,12 @@ METHODS
         Overload to enable debug messages (same as -Debug option).
 
     $c->dispatcher
-        Returns the dispatcher instance. Stringifies to class name.
+        Returns the dispatcher instance. Stringifies to class name. See
+        Catalyst::Dispatcher.
 
     $c->engine
-        Returns the engine instance. Stringifies to the class name.
+        Returns the engine instance. Stringifies to the class name. See
+        Catalyst::Engine.
 
     $c->log
         Returns the logging object instance. Unless it is already set,
@@ -232,14 +239,14 @@ METHODS
         log class:
 
             $c->log( MyLogger->new );
-            $c->log->info( 'now logging with my own logger!' );
+            $c->log->info( 'Now logging with my own logger!' );
 
         Your log class should implement the methods described in the
         Catalyst::Log man page.
 
   Utility methods
     $c->path_to(@path)
-        Merges @path with $c->config->{home} and returns a Path::Class
+        Merges @path with "$c->config->{home}" and returns a Path::Class
         object.
 
         For example:
@@ -258,21 +265,23 @@ METHODS
         Initializes the dispatcher and engine, loads any plugins, and loads
         the model, view, and controller components. You may also specify an
         array of plugins to load here, if you choose to not load them in the
-        'use Catalyst' line.
+        "use Catalyst" line.
 
             MyApp->setup;
             MyApp->setup( qw/-Debug/ );
 
     $c->uri_for( $path, [ @args ] )
-        Merges path with $c->request->base for absolute uri's and with
-        $c->request->match for relative uri's, then returns a normalized URI
-        object. If any args are passed, they are added at the end of the
+        Merges path with "$c->request->base" for absolute uri's and with
+        "$c->request->match" for relative uri's, then returns a normalized
+        URI object. If any args are passed, they are added at the end of the
         path.
 
     $c->welcome_message
         Returns the Catalyst welcome HTML page.
 
 INTERNAL METHODS
+    These methods are not meant to be used by end users.
+
     $c->benchmark( $coderef )
         Takes a coderef with arguments and returns elapsed time as float.
 
@@ -299,7 +308,7 @@ INTERNAL METHODS
     $c->dispatcher_class
         Returns or sets the dispatcher class.
 
-    dump_these
+    $c->dump_these
         Returns a list of 2-element array references (name, structure) pairs
         that will be dumped on the error page in debug mode.
 
@@ -401,7 +410,7 @@ INTERNAL METHODS
         to be used in a while loop, reading $maxlength bytes on every call.
         $maxlength defaults to the size of the request if not specified.
 
-        You have to set MyApp->config->{parse_on_demand} to use this
+        You have to set "MyApp->config->{parse_on_demand}" to use this
         directly.
 
     $c->run
@@ -417,16 +426,26 @@ INTERNAL METHODS
         Sets up components.
 
     $c->setup_dispatcher
+        Sets up dispatcher.
+
     $c->setup_engine
+        Sets up engine.
+
     $c->setup_home
+        Sets up the home directory.
+
     $c->setup_log
+        Sets up log.
+
     $c->setup_plugins
+        Sets up plugins.
+
     $c->stack
         Returns the stack.
 
     $c->write( $data )
         Writes $data to the output stream. When using this method directly,
-        you will need to manually set the Content-Length header to the
+        you will need to manually set the "Content-Length" header to the
         length of your output data, if known.
 
     version
@@ -434,27 +453,24 @@ INTERNAL METHODS
         messages in template systems.
 
 INTERNAL ACTIONS
-    Catalyst uses internal actions like "_DISPATCH", "_BEGIN", "_AUTO"
-    "_ACTION" and "_END", these are by default not shown in the private
-    action table.
-
-    But you can deactivate this with a config parameter.
+    Catalyst uses internal actions like "_DISPATCH", "_BEGIN", "_AUTO",
+    "_ACTION", and "_END". These are by default not shown in the private
+    action table, but you can make them visible with a config parameter.
 
         MyApp->config->{show_internal_actions} = 1;
 
 CASE SENSITIVITY
-    By default Catalyst is not case sensitive, so "MyApp::C::FOO::Bar"
-    becomes "/foo/bar".
-
-    But you can activate case sensitivity with a config parameter.
+    By default Catalyst is not case sensitive, so "MyApp::C::FOO::Bar" is
+    mapped to "/foo/bar". You can activate case sensitivity with a config
+    parameter.
 
         MyApp->config->{case_sensitive} = 1;
 
-    So "MyApp::C::Foo::Bar" becomes "/Foo/Bar".
+    This causes "MyApp::C::Foo::Bar" to map to "/Foo/Bar".
 
 ON-DEMAND PARSER
     The request body is usually parsed at the beginning of a request, but if
-    you want to handle input yourself or speed things up a bit you can
+    you want to handle input yourself or speed things up a bit, you can
     enable on-demand parsing with a config parameter.
 
         MyApp->config->{parse_on_demand} = 1;
@@ -463,22 +479,21 @@ PROXY SUPPORT
     Many production servers operate using the common double-server approach,
     with a lightweight frontend web server passing requests to a larger
     backend server. An application running on the backend server must deal
-    with two problems: the remote user always appears to be '127.0.0.1' and
-    the server's hostname will appear to be 'localhost' regardless of the
-    virtual host the user connected through.
+    with two problems: the remote user always appears to be 127.0.0.1 and
+    the server's hostname will appear to be "localhost" regardless of the
+    virtual host that the user connected through.
 
     Catalyst will automatically detect this situation when you are running
-    both the frontend and backend servers on the same machine. The following
+    the frontend and backend servers on the same machine. The following
     changes are made to the request.
 
-        $c->req->address is set to the user's real IP address, as read from the
-        HTTP_X_FORWARDED_FOR header.
+        $c->req->address is set to the user's real IP address, as read from 
+        the HTTP X-Forwarded-For header.
     
-        The host value for $c->req->base and $c->req->uri is set to the real host,
-        as read from the HTTP_X_FORWARDED_HOST header.
+        The host value for $c->req->base and $c->req->uri is set to the real
+        host, as read from the HTTP X-Forwarded-Host header.
 
-    Obviously, your web server must support these 2 headers for this to
-    work.
+    Obviously, your web server must support these headers for this to work.
 
     In a more complex server farm environment where you may have your
     frontend proxy server(s) on different machines, you will need to set a
@@ -505,7 +520,7 @@ SUPPORT
 
         Join #catalyst on irc.perl.org.
 
-    Mailing-Lists:
+    Mailing Lists:
 
         http://lists.rawmode.org/mailman/listinfo/catalyst
         http://lists.rawmode.org/mailman/listinfo/catalyst-dev
@@ -521,10 +536,10 @@ SUPPORT
 SEE ALSO
     Catalyst::Manual - The Catalyst Manual
     Catalyst::Component, Catalyst::Base - Base classes for components
-    Catalyst::Engine - Core Engine
-    Catalyst::Log - The Log Class.
-    Catalyst::Request - The Request Object
-    Catalyst::Response - The Response Object
+    Catalyst::Engine - Core engine
+    Catalyst::Log - Log class.
+    Catalyst::Request - Request object
+    Catalyst::Response - Response object
     Catalyst::Test - The test suite.
 
 CREDITS

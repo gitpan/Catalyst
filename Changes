@@ -1,5 +1,8 @@
 Tis file documents the revision history for Perl extension Catalyst.
 
+5.5     2005-11-12 20:45:00
+	- CPAN release 
+
 5.49_05 2005-11-12 20:45:00
         - Large update to the documentation. (David Kamholz)
         - Fixed args handling in forward()
