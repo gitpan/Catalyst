@@ -272,8 +272,8 @@ METHODS
 
     $c->uri_for( $path, [ @args ] )
         Merges path with "$c->request->base" for absolute uri's and with
-        "$c->request->match" for relative uri's, then returns a normalized
-        URI object. If any args are passed, they are added at the end of the
+        "$c->namespace" for relative uri's, then returns a normalized URI
+        object. If any args are passed, they are added at the end of the
         path.
 
     $c->welcome_message
