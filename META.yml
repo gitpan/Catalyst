@@ -1,6 +1,6 @@
 ---
 name: Catalyst
-version: 5.52
+version: 5.53
 author:
   - 'Sebastian Riedel, C<sri@oook.de>'
 abstract: The Elegant MVC Web Application Framework
@@ -32,13 +32,13 @@ requires:
   URI: 1.35
   perl: 5.8.1
 recommends:
-  Catalyst::Engine::Apache: 0
+  Catalyst::Engine::Apache: 1.00
   FCGI: 0
   FCGI::ProcManager: 0
 provides:
   Catalyst:
     file: lib/Catalyst.pm
-    version: 5.52
+    version: 5.53
   Catalyst::Action:
     file: lib/Catalyst/Action.pm
   Catalyst::ActionContainer:
