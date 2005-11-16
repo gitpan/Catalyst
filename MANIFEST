@@ -20,7 +20,6 @@ lib/Catalyst/Engine/FastCGI.pm
 lib/Catalyst/Engine/HTTP.pm
 lib/Catalyst/Engine/HTTP/Restarter.pm
 lib/Catalyst/Engine/HTTP/Restarter/Watcher.pm
-lib/Catalyst/Engine/Test.pm
 lib/Catalyst/Exception.pm
 lib/Catalyst/Helper.pm
 lib/Catalyst/Log.pm
@@ -30,8 +29,6 @@ lib/Catalyst/Manual/FAQ.pod
 lib/Catalyst/Manual/Internals.pod
 lib/Catalyst/Manual/Intro.pod
 lib/Catalyst/Manual/Plugins.pod
-lib/Catalyst/Manual/SuccessStories.pod
-lib/Catalyst/Manual/Troubleshooting.pod
 lib/Catalyst/Manual/Tutorial.pod
 lib/Catalyst/Manual/WritingPlugins.pod
 lib/Catalyst/Model.pm

@@ -1,5 +1,13 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.56   2005-11-16 10:33:00
+        - Fixed FastCGI engine to not clobber the global %ENV on each
+          request. (Sam Vilain)
+        - Updated benchmarking to work with detach
+        - Fixed dispatcher, so $c->req->action(undef) works again
+        - Updated Catalyst::Test to use HTTP::Request::AsCGI
+        - Added -pidfile to external FastCGI server.
+
 5.55    2005-11-15 12:55:00
         - Fixed multiple cookie handling
 

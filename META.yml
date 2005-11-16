@@ -1,6 +1,6 @@
 ---
 name: Catalyst
-version: 5.55
+version: 5.56
 author:
   - 'Sebastian Riedel, C<sri@oook.de>'
 abstract: The Elegant MVC Web Application Framework
@@ -15,6 +15,7 @@ requires:
   HTTP::Body: 0.4
   HTTP::Headers: 1.59
   HTTP::Request: 0
+  HTTP::Request::AsCGI: 0
   HTTP::Response: 0
   LWP::UserAgent: 0
   MIME::Types: 0
@@ -38,7 +39,7 @@ recommends:
 provides:
   Catalyst:
     file: lib/Catalyst.pm
-    version: 5.55
+    version: 5.56
   Catalyst::Action:
     file: lib/Catalyst/Action.pm
   Catalyst::ActionContainer:
@@ -77,8 +78,6 @@ provides:
     file: lib/Catalyst/Engine/HTTP/Restarter.pm
   Catalyst::Engine::HTTP::Restarter::Watcher:
     file: lib/Catalyst/Engine/HTTP/Restarter/Watcher.pm
-  Catalyst::Engine::Test:
-    file: lib/Catalyst/Engine/Test.pm
   Catalyst::Exception:
     file: lib/Catalyst/Exception.pm
   Catalyst::Exception::Base:

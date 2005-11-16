@@ -690,17 +690,23 @@ use lib "$FindBin::Bin/../lib";
 use [% name %];
 
 my $help = 0;
-my ( $listen, $nproc );
+my ( $listen, $nproc, $pidfile );
  
 GetOptions(
-    'help|?'     => \$help,
-    'listen|l=s' => \$listen,
-    'nproc|n=i'  => \$nproc,
+    'help|?'      => \$help,
+    'listen|l=s'  => \$listen,
+    'nproc|n=i'   => \$nproc,
+    'pidfile|p=s' => \$pidfile,
 );
 
 pod2usage(1) if $help;
 
-[% name %]->run( $listen, { nproc => $nproc } );
+[% name %]->run( 
+    $listen, 
+    {   nproc   => $nproc,
+        pidfile => $pidfile, 
+    }
+);
 
 1;
 
@@ -719,7 +725,10 @@ pod2usage(1) if $help;
                  can be HOST:PORT, :PORT or a
                  filesystem path
    -n -nproc     specify number of processes to keep
-                 to serve requests (defaults to 1)
+                 to serve requests (defaults to 1,
+                 requires -listen)
+   -p -pidfile   specify filename for pid file
+                 (requires -listen)
 
 =head1 DESCRIPTION
 
@@ -839,14 +848,12 @@ it under the same terms as Perl itself.
 __test__
 [% startperl %] -w
 
-BEGIN { $ENV{CATALYST_ENGINE} ||= 'Test' }
-
 use strict;
 use Getopt::Long;
 use Pod::Usage;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
-use [% name %];
+use Catalyst::Test '[% name %]';
 
 my $help = 0;
 
@@ -854,7 +861,7 @@ GetOptions( 'help|?' => \$help );
 
 pod2usage(1) if ( $help || !$ARGV[0] );
 
-print [% name %]->run($ARGV[0])->content . "\n";
+print request($ARGV[0])->content . "\n";
 
 1;
 

@@ -282,12 +282,6 @@ METHODS
 INTERNAL METHODS
     These methods are not meant to be used by end users.
 
-    $c->benchmark( $coderef )
-        Takes a coderef with arguments and returns elapsed time as float.
-
-            my ( $elapsed, $status ) = $c->benchmark( sub { return 1 } );
-            $c->log->info( sprintf "Processing took %f seconds", $elapsed );
-
     $c->components
         Returns a hash of components.
 

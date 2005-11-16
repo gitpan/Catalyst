@@ -37,6 +37,7 @@ Options may also be specified;
                   interrupted by Ctrl+C
   nproc           Specify a number of processes for
                   FCGI::ProcManager
+  pidfile         Specify a filename for the pid file
 
 =cut
 
@@ -61,24 +62,33 @@ sub run {
     }
 
     $options ||= {};
+    
+    my %env;
 
     my $request =
-      FCGI::Request( \*STDIN, \*STDOUT, \*STDERR, \%ENV, $sock,
+      FCGI::Request( \*STDIN, \*STDOUT, \*STDERR, \%env, $sock,
         ( $options->{nointr} ? 0 : &FCGI::FAIL_ACCEPT_ON_INTR ),
       );
 
     my $proc_manager;
-
-    if ( $listen and ( $options->{nproc} || 1 ) > 1 ) {
+    
+    if ( $listen ) {
         require FCGI::ProcManager;
-        $proc_manager =
-          FCGI::ProcManager->new( { n_processes => $options->{nproc} } );
+        $options->{nproc} ||= 1;
+        
+        $proc_manager
+            = FCGI::ProcManager->new( { n_processes => $options->{nproc} } );
+          
+        if ( $options->{pidfile} ) {
+            $proc_manager->pm_write_pid_file( $options->{pidfile} );
+        }
+        
         $proc_manager->pm_manage();
     }
 
     while ( $request->Accept >= 0 ) {
         $proc_manager && $proc_manager->pm_pre_dispatch();
-        $class->handle_request;
+        $class->handle_request( env => \%env );
         $proc_manager && $proc_manager->pm_pre_dispatch();
     }
 }
@@ -114,7 +124,7 @@ control the running of your FastCGI processes.
 
     # Launch the FastCGI processes
     FastCgiIpcDir /tmp
-    FastCgiServer /var/www/MyApp/script/myapp_fastcgi.pl -idle_timeout 300 -processes 5
+    FastCgiServer /var/www/MyApp/script/myapp_fastcgi.pl -idle-timeout 300 -processes 5
     
     <VirtualHost *>
         ScriptAlias / /var/www/MyApp/script/myapp_fastcgi.pl/
@@ -155,7 +165,17 @@ This configuration was tested with Lighttpd 1.4.7.
         )
     )
     
-Or use an external server:
+You can also run your application at any non-root location.
+
+    fastcgi.server = (
+        "/myapp" => (
+            "MyApp" => (
+                # same as above
+            )
+        )
+    )
+    
+You can also use an external server:
 
     # Start the external server (requires FCGI::ProcManager)
     $ script/myapp_fastcgi.pl -l /tmp/myapp.socket -n 5
