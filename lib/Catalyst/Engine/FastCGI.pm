@@ -2,7 +2,8 @@ package Catalyst::Engine::FastCGI;
 
 use strict;
 use base 'Catalyst::Engine::CGI';
-use FCGI;
+eval "use FCGI";
+die "Please install FCGI\n" if $@;
 
 =head1 NAME
 
@@ -16,9 +17,7 @@ This is the FastCGI engine.
 
 This class overloads some methods from C<Catalyst::Engine::CGI>.
 
-=over 4
-
-=item $self->run($c, $listen, { option => value, ... })
+=head2 $self->run($c, $listen, { option => value, ... })
  
 Starts the FastCGI server.  If C<$listen> is set, then it specifies a
 location to listen for FastCGI requests;
@@ -38,6 +37,8 @@ Options may also be specified;
   nproc           Specify a number of processes for
                   FCGI::ProcManager
   pidfile         Specify a filename for the pid file
+  manager         Specify a FCGI::ProcManager sub-class
+  detach          Detach from console
 
 =cut
 
@@ -62,7 +63,7 @@ sub run {
     }
 
     $options ||= {};
-    
+
     my %env;
 
     my $request =
@@ -71,19 +72,31 @@ sub run {
       );
 
     my $proc_manager;
-    
-    if ( $listen ) {
-        require FCGI::ProcManager;
-        $options->{nproc} ||= 1;
-        
-        $proc_manager
-            = FCGI::ProcManager->new( { n_processes => $options->{nproc} } );
-          
-        if ( $options->{pidfile} ) {
-            $proc_manager->pm_write_pid_file( $options->{pidfile} );
+
+    if ($listen) {
+        $options->{manager} ||= "FCGI::ProcManager";
+        $options->{nproc}   ||= 1;
+
+        $self->daemon_fork() if $options->{detach};
+
+        if ( $options->{manager} ) {
+            eval "use $options->{manager}; 1" or die $@;
+
+            $proc_manager = $options->{manager}->new(
+                {
+                    n_processes => $options->{nproc},
+                    pid_fname   => $options->{pidfile},
+                }
+            );
+
+            # detach *before* the ProcManager inits
+            $self->daemon_detach() if $options->{detach};
+
+            $proc_manager->pm_manage();
         }
-        
-        $proc_manager->pm_manage();
+        elsif ( $options->{detach} ) {
+            $self->daemon_detach();
+        }
     }
 
     while ( $request->Accept >= 0 ) {
@@ -93,7 +106,7 @@ sub run {
     }
 }
 
-=item $self->write($c, $buffer)
+=head2 $self->write($c, $buffer)
 
 =cut
 
@@ -110,10 +123,41 @@ sub write {
     *STDOUT->syswrite($buffer);
 }
 
+=head2 $self->daemon_fork()
+
+Performs the first part of daemon initialisation.  Specifically,
+forking.  STDERR, etc are still connected to a terminal.
+
+=cut
+
+sub daemon_fork {
+    require POSIX;
+    fork && exit;
+}
+
+=head2 $self->daemon_detach( )
+
+Performs the second part of daemon initialisation.  Specifically,
+disassociates from the terminal.
+
+However, this does B<not> change the current working directory to "/",
+as normal daemons do.  It also does not close all open file
+descriptors (except STDIN, STDOUT and STDERR, which are re-opened from
+F</dev/null>).
+
+=cut
+
+sub daemon_detach {
+    my $self = shift;
+    print "FastCGI daemon started (pid $$)\n";
+    open STDIN,  "+</dev/null" or die $!;
+    open STDOUT, ">&STDIN"     or die $!;
+    open STDERR, ">&STDIN"     or die $!;
+    POSIX::setsid();
+}
+
 1;
 __END__
-
-=back
 
 =head1 WEB SERVER CONFIGURATIONS
 

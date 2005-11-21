@@ -2,13 +2,11 @@ package Catalyst::Helper;
 
 use strict;
 use base 'Class::Accessor::Fast';
-use Config;
 use File::Spec;
 use File::Path;
 use IO::File;
 use FindBin;
 use Template;
-use Catalyst;
 use Catalyst::Utils;
 use Catalyst::Exception;
 
@@ -58,13 +56,20 @@ Create the main application skeleton.
 
 sub mk_app {
     my ( $self, $name ) = @_;
-    return 0 if $name =~ /[^\w\:]/;
+
+    # Needs to be here for PAR
+    require Catalyst;
+
+    if ( $name =~ /[^\w\:]/ ) {
+        warn "Error: Invalid application name.\n";
+        return 0;
+    }
     $self->{name} = $name;
     $self->{dir}  = $name;
     $self->{dir} =~ s/\:\:/-/g;
     $self->{script}    = File::Spec->catdir( $self->{dir}, 'script' );
     $self->{appprefix} = Catalyst::Utils::appprefix($name);
-    $self->{startperl} = $Config{startperl};
+    $self->{startperl} = '#!/usr/bin/perl -w';
     $self->{scriptgen} = $Catalyst::CATALYST_SCRIPT_GEN || 4;
     $self->{author}    = $self->{author} = $ENV{'AUTHOR'}
       || eval { @{ [ getpwuid($<) ] }[6] }
@@ -73,7 +78,6 @@ sub mk_app {
     unless ( $self->{scripts} ) {
         $self->_mk_dirs;
         $self->_mk_appclass;
-        $self->_mk_build;
         $self->_mk_makefile;
         $self->_mk_readme;
         $self->_mk_changes;
@@ -252,10 +256,9 @@ sub next_test {
         $self->{uri} = $prefix;
     }
     my $dir  = $self->{test_dir};
-    my $type = $self->{type};
-    $dir = File::Spec->catdir( $dir, $type );
+    my $type = lc $self->{type};
     $self->mk_dir($dir);
-    return File::Spec->catfile( $dir, $tname );
+    return File::Spec->catfile( $dir, "$type\_$tname" );
 }
 
 =head3 render_file
@@ -293,17 +296,6 @@ sub _mk_dirs {
     $self->{t} = File::Spec->catdir( $self->{dir}, 't' );
     $self->mk_dir( $self->{t} );
 
-    if ( $self->{short} ) {
-        $self->mk_dir( File::Spec->catdir( $self->{t}, 'M' ) );
-        $self->mk_dir( File::Spec->catdir( $self->{t}, 'V' ) );
-        $self->mk_dir( File::Spec->catdir( $self->{t}, 'C' ) );
-    }
-    else {
-        $self->mk_dir( File::Spec->catdir( $self->{t}, 'Model' ) );
-        $self->mk_dir( File::Spec->catdir( $self->{t}, 'View' ) );
-        $self->mk_dir( File::Spec->catdir( $self->{t}, 'Controller' ) );
-    }
-
     $self->{class} = File::Spec->catdir( split( /\:\:/, $self->{name} ) );
     $self->{mod} = File::Spec->catdir( $self->{lib}, $self->{class} );
     $self->mk_dir( $self->{mod} );
@@ -333,15 +325,11 @@ sub _mk_appclass {
     $self->render_file( 'appclass', "$mod.pm" );
 }
 
-sub _mk_build {
-    my $self = shift;
-    my $dir  = $self->{dir};
-    $self->render_file( 'build', "$dir\/Build.PL" );
-}
-
 sub _mk_makefile {
     my $self = shift;
-    my $dir  = $self->{dir};
+    $self->{path} = File::Spec->catfile( 'lib', split( '::', $self->{name} ) );
+    $self->{path} .= '.pm';
+    my $dir = $self->{dir};
     $self->render_file( 'makefile', "$dir\/Makefile.PL" );
 }
 
@@ -525,9 +513,7 @@ Catalyst based application.
 
 =head1 METHODS
 
-=over 4
-
-=item default
+=head2 default
 
 =cut
 
@@ -544,7 +530,7 @@ sub default : Private {
 #
 # Uncomment and modify this end action after adding a View component
 #
-#=item end
+#=head2 end
 #
 #=cut
 #
@@ -554,8 +540,6 @@ sub default : Private {
 #    # Forward to View unless response body is already defined
 #    $c->forward('View::') unless $c->response->body;
 #}
-
-=back
 
 =head1 AUTHOR
 
@@ -570,52 +554,26 @@ it under the same terms as Perl itself.
 
 1;
 __makefile__
-    unless ( eval "use Module::Build::Compat 0.02; 1" ) {
-        print "This module requires Module::Build to install itself.\n";
+use inc::Module::Install;
 
-        require ExtUtils::MakeMaker;
-        my $yn =
-          ExtUtils::MakeMaker::prompt( '  Install Module::Build now from CPAN?',            'y' );
+name('[% name %]');
+abstract('Catalyst Application');
+author('[% author %]');
+version_from('[% path %]');
+license('perl');
 
-        unless ( $yn =~ /^y/i ) {
-            die " *** Cannot install without Module::Build.  Exiting ...\n";
-        }
+requires( Catalyst => '5.57' );
 
-        require Cwd;
-        require File::Spec;
-        require CPAN;
+install_script( glob('script/*.pl') );
 
-        # Save this 'cause CPAN will chdir all over the place.
-        my $cwd      = Cwd::cwd();
-        my $makefile = File::Spec->rel2abs($0);
+catalyst_files();
 
-        CPAN::Shell->install('Module::Build::Compat')
-          or die " *** Cannot install without Module::Build.  Exiting ...\n";
-
-        chdir $cwd or die "Cannot chdir() back to $cwd: $!";
-    }
-    eval "use Module::Build::Compat 0.02; 1" or die $@;
-    use lib '_build/lib';
-    Module::Build::Compat->run_build_pl( args => \@ARGV );
-    require Module::Build;
-    Module::Build::Compat->write_makefile( build_class => 'Module::Build' );
-__build__
-use strict;
-use Catalyst::Build;
-
-my $build = Catalyst::Build->new(
-    license            => 'perl',
-    module_name        => '[% name %]',
-    requires           => { Catalyst => '5.49' },
-    create_makefile_pl => 'passthrough',
-    script_files       => [ glob('script/*') ],
-    test_files         => [ glob('t/*.t'), glob('t/*/*.t') ]
-);
-$build->create_build_script;
+&WriteAll;
 __readme__
 Run script/[% appprefix %]_server.pl to test the application.
 __changes__
 This file documents the revision history for Perl extension [% name %].
+
 0.01  [% time %]
         - initial revision, generated by Catalyst
 __apptest__
@@ -640,7 +598,7 @@ plan skip_all => 'set TEST_POD to enable this test' unless $ENV{TEST_POD};
 
 all_pod_coverage_ok();
 __cgi__
-[% startperl %] -w
+[% startperl %]
 
 BEGIN { $ENV{CATALYST_ENGINE} ||= 'CGI' }
 
@@ -678,7 +636,7 @@ it under the same terms as Perl itself.
 
 =cut
 __fastcgi__
-[% startperl %] -w
+[% startperl %]
 
 BEGIN { $ENV{CATALYST_ENGINE} ||= 'FastCGI' }
 
@@ -690,13 +648,15 @@ use lib "$FindBin::Bin/../lib";
 use [% name %];
 
 my $help = 0;
-my ( $listen, $nproc, $pidfile );
+my ( $listen, $nproc, $pidfile, $manager, $detach );
  
 GetOptions(
     'help|?'      => \$help,
     'listen|l=s'  => \$listen,
     'nproc|n=i'   => \$nproc,
     'pidfile|p=s' => \$pidfile,
+    'manager|M=s' => \$manager,
+    'daemon|d'    => \$detach,
 );
 
 pod2usage(1) if $help;
@@ -705,6 +665,8 @@ pod2usage(1) if $help;
     $listen, 
     {   nproc   => $nproc,
         pidfile => $pidfile, 
+        manager => $manager,
+        detach  => $detach,
     }
 );
 
@@ -729,6 +691,10 @@ pod2usage(1) if $help;
                  requires -listen)
    -p -pidfile   specify filename for pid file
                  (requires -listen)
+   -d -daemon    daemonize (requires -listen)
+   -M -manager   specify alternate process manager
+                 (FCGI::ProcessManager sub-class)
+                 or empty string to disable
 
 =head1 DESCRIPTION
 
@@ -747,7 +713,7 @@ it under the same terms as Perl itself.
 
 =cut
 __server__
-[% startperl %] -w
+[% startperl %]
 
 BEGIN { 
     $ENV{CATALYST_ENGINE} ||= 'HTTP';
@@ -765,6 +731,7 @@ my $fork          = 0;
 my $help          = 0;
 my $host          = undef;
 my $port          = 3000;
+my $keepalive     = 0;
 my $restart       = 0;
 my $restart_delay = 1;
 my $restart_regex = '\.yml$|\.yaml$|\.pm$';
@@ -777,6 +744,7 @@ GetOptions(
     'help|?'            => \$help,
     'host=s'            => \$host,
     'port=s'            => \$port,
+    'keepalive|k'       => \$keepalive,
     'restart|r'         => \$restart,
     'restartdelay|rd=s' => \$restart_delay,
     'restartregex|rr=s' => \$restart_regex
@@ -794,9 +762,10 @@ if ( $debug ) {
 require [% name %];
 
 [% name %]->run( $port, $host, {
-    argv   => \@argv,
-    'fork' => $fork,
-    restart => $restart,
+    argv          => \@argv,
+    'fork'        => $fork,
+    keepalive     => $keepalive,
+    restart       => $restart,
     restart_delay => $restart_delay,
     restart_regex => qr/$restart_regex/
 } );
@@ -818,6 +787,7 @@ require [% name %];
    -? -help           display this help and exits
       -host           host (defaults to all)
    -p -port           port (defaults to 3000)
+   -k -keepalive      enable keep-alive connections
    -r -restart        restart when files got modified
                       (defaults to false)
    -rd -restartdelay  delay between file checks
@@ -846,7 +816,7 @@ it under the same terms as Perl itself.
 
 =cut
 __test__
-[% startperl %] -w
+[% startperl %]
 
 use strict;
 use Getopt::Long;
@@ -901,27 +871,27 @@ it under the same terms as Perl itself.
 
 =cut
 __create__
-[% startperl %] -w
+[% startperl %]
 
 use strict;
 use Getopt::Long;
 use Pod::Usage;
 use Catalyst::Helper;
 
-my $help = 0;
-my $nonew = 0;
+my $force = 0;
+my $help  = 0;
 my $short = 0;
 
 GetOptions(
-    'help|?' => \$help,
-    'nonew'  => \$nonew,
-    'short'  => \$short
+    'nonew|force' => \$force,
+    'help|?'      => \$help,
+    'short'       => \$short
  );
 
 pod2usage(1) if ( $help || !$ARGV[0] );
 
 my $helper =
-    Catalyst::Helper->new( { '.newfiles' => !$nonew, short => $short } );
+    Catalyst::Helper->new( { '.newfiles' => !$force, short => $short } );
 
 pod2usage(1) unless $helper->mk_component( '[% name %]', @ARGV );
 
@@ -936,8 +906,8 @@ pod2usage(1) unless $helper->mk_component( '[% name %]', @ARGV );
 [% appprefix %]_create.pl [options] model|view|controller name [helper] [options]
 
  Options:
+   -force    don't create a .new file where a file to be created exists
    -help     display this help and exits
-   -nonew    don't create a .new file where a file to be created exists
    -short    use short types, like C instead of Controller...
 
  Examples:
@@ -959,11 +929,11 @@ Create a new Catalyst Component.
 
 Existing component files are not overwritten.  If any of the component files
 to be created already exist the file will be written with a '.new' suffix.
-This behavior can be suppressed with the C<-nonew> option.
+This behavior can be suppressed with the C<-force> option.
 
 =head1 AUTHOR
 
-Sebastian Riedel, C<sri\@oook.de>
+Sebastian Riedel, C<sri@oook.de>
 
 =head1 COPYRIGHT
 
@@ -994,12 +964,10 @@ Catalyst [% long_type %].
 [% IF long_type == 'Controller' %]
 =head1 METHODS
 
-=over 4
-
 #
 # Uncomment and modify this or add new actions to fit your needs
 #
-#=item default
+#=head2 default
 #
 #=cut
 #
@@ -1009,8 +977,6 @@ Catalyst [% long_type %].
 #    # Hello World
 #    $c->response->body('[% class %] is on Catalyst!');
 #}
-
-=back
 
 [% END %]
 =head1 AUTHOR

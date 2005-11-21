@@ -7,11 +7,9 @@ use Catalyst::Exception;
 use Catalyst::Utils;
 use UNIVERSAL::require;
 
-$ENV{CATALYST_ENGINE} = 'CGI';
-
 =head1 NAME
 
-Catalyst::Test - Test Catalyst applications
+Catalyst::Test - Test Catalyst Applications
 
 =head1 SYNOPSIS
 
@@ -29,7 +27,7 @@ Catalyst::Test - Test Catalyst applications
     # Tests with inline apps need to use Catalyst::Engine::Test
     package TestApp;
 
-    use Catalyst qw[-Engine=Test];
+    use Catalyst;
 
     sub foo : Global {
             my ( $self, $c ) = @_;
@@ -47,19 +45,17 @@ Catalyst::Test - Test Catalyst applications
 
 =head1 DESCRIPTION
 
-Test Catalyst applications.
+Test Catalyst Applications.
 
 =head2 METHODS
 
-=over 4
-
-=item get
+=head2 get
 
 Returns the content.
 
     my $content = get('foo/bar?test=1');
 
-=item request
+=head2 request
 
 Returns a C<HTTP::Response> object.
 
@@ -93,7 +89,7 @@ sub import {
     *{"$caller\::get"}     = $get;
 }
 
-=item local_request
+=head2 local_request
 
 =cut
 
@@ -112,7 +108,7 @@ sub local_request {
 
 my $agent;
 
-=item remote_request
+=head2 remote_request
 
 Do an actual remote request using LWP.
 
@@ -147,8 +143,6 @@ sub remote_request {
 
     return $agent->request($request);
 }
-
-=back 
 
 =head1 SEE ALSO
 
