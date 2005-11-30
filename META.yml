@@ -1,5 +1,5 @@
 name: Catalyst
-version: 5.58
+version: 5.59
 abstract: Catalyst Web Framework
 author: Sebastian Riedel
 license: perl
@@ -32,7 +32,7 @@ requires:
   Tree::Simple::Visitor::FindByPath: 0
   URI: 1.35
   File::Copy::Recursive: 0
-  inc::Module::Install: 0
+  Module::Install::Admin: 0
   ExtUtils::AutoInstall: 0
 no_index:
   directory:

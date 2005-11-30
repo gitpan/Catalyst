@@ -102,6 +102,7 @@ sub finalize_error {
               . '</code></p>'
         } @{ $c->error };
         $error ||= 'No output';
+        $error = "<pre>$error</pre>";
         $title = $name = "$name on Catalyst $Catalyst::VERSION";
         $name = "<h1>$name</h1>";
 
@@ -219,7 +220,6 @@ EOF
             display: block;
             margin: 1em 0;
             overflow: auto;
-            white-space: pre;
         }
         div.name h1, div.error p {
             margin: 0;

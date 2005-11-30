@@ -35,7 +35,7 @@ requires('Tree::Simple');
 requires('Tree::Simple::Visitor::FindByPath');
 requires( 'URI' => 1.35 );
 requires('File::Copy::Recursive');
-requires('inc::Module::Install');
+requires('Module::Install::Admin');
 requires('ExtUtils::AutoInstall');
 
 features(
@@ -53,7 +53,7 @@ features(
         'PAR'    => 0
     ],
     'CPANPLUS (for easier installations)' => [
-        -default   => 1,
+        -default   => 0,
         'CPANPLUS' => 0
     ],
 );

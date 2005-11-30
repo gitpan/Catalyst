@@ -1,8 +1,15 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.59    2005-11-30 13:25:00
+        - Fixed shebang line for generated scripts
+        - Fixed forward to classes ($c->forward(qw/MyApp foo/))
+        - Wrap use block in begin to quelch C:C3 warnings
+        - Removed scrollbar from debug output
+        - Fixed catalyst_par_core() and catalyst_par_multiarch()
+
 5.58    2005-11-24 10:51:00
         - Added ExtUtils::AutoInstall support
-	- Allow overriding path in Catalyst::Helper.
+	    - Allow overriding path in Catalyst::Helper.
         - Added -makefile to catalyst.pl to generate a new Makefile.PL.
         - Restored Catalyst::Build with a deprecation notice.
         - Improved PAR support
