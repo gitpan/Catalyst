@@ -43,7 +43,7 @@ our $DETACH    = "catalyst_detach\n";
 require Module::Pluggable::Fast;
 
 # Helper script generation
-our $CATALYST_SCRIPT_GEN = 19;
+our $CATALYST_SCRIPT_GEN = 21;
 
 __PACKAGE__->mk_classdata($_)
   for qw/components arguments dispatcher engine log dispatcher_class
@@ -54,7 +54,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.57';
+our $VERSION = '5.58';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -1844,6 +1844,8 @@ Wiki:
     http://dev.catalyst.perl.org
 
 =head1 SEE ALSO
+
+=head2 L<Task::Catalyst> - All you need to start with Catalyst
 
 =head2 L<Catalyst::Manual> - The Catalyst Manual
 

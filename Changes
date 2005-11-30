@@ -1,5 +1,19 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.58    2005-11-24 10:51:00
+        - Added ExtUtils::AutoInstall support
+	- Allow overriding path in Catalyst::Helper.
+        - Added -makefile to catalyst.pl to generate a new Makefile.PL.
+        - Restored Catalyst::Build with a deprecation notice.
+        - Improved PAR support
+        - Replaced -short with auto-detection
+        - Fixed prereqs, added File::Copy::Recursive
+        - Static::Simple changes:
+            - Made prepare_action play nice with other plugins by not short-
+              circuiting.
+            - Added tmpl to the ignored extensions.
+            - Fixed security problem if req->path contained '..'.
+
 5.57    2005-11-20 22:45:00
         - Updated uri_for to accept undef actions
         - Switched to Module::Install

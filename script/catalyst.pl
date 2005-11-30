@@ -5,23 +5,28 @@ use Getopt::Long;
 use Pod::Usage;
 use Catalyst::Helper;
 
-my $force   = 0;
-my $help    = 0;
-my $scripts = 0;
-my $short   = 0;
+my $force    = 0;
+my $help     = 0;
+my $makefile = 0;
+my $scripts  = 0;
+my $short    = 0;
 
 GetOptions(
     'help|?'      => \$help,
     'force|nonew' => \$force,
+    'makefile'    => \$makefile,
     'scripts'     => \$scripts,
     'short'       => \$short
 );
 
 pod2usage(1) if ( $help || !$ARGV[0] );
 
-my $helper =
-  Catalyst::Helper->new(
-    { '.newfiles' => !$force, 'scripts' => $scripts, 'short' => $short } );
+my $helper = Catalyst::Helper->new( {
+    '.newfiles' => !$force, 
+    'makefile'  => $makefile, 
+    'scripts'   => $scripts,
+    'short'     => $short,
+} );
 pod2usage(1) unless $helper->mk_app( $ARGV[0] );
 
 1;
@@ -38,6 +43,7 @@ catalyst.pl [options] application-name
  Options:
    -force      don't create a .new file where a file to be created exists
    -help       display this help and exits
+   -makefile   update Makefile.PL only
    -scripts    update helper scripts only
    -short      use short types, like C instead of Controller...
 
@@ -70,18 +76,14 @@ contain the following items:
 
 a skeleton README file, which you are encouraged to expand on
 
-=item Build.PL
-
-a C<Module::Build> build script
-
 =item Changes
 
 a changes file with an initial entry for the creation of the application
 
 =item Makefile.PL
 
-an old-style MakeMaker script.  Catalyst uses the C<Module::Build> system so
-this script actually generates a Makeifle that invokes the Build script.
+Makefile.PL uses the C<Module::Install> system for packaging and distribution
+of the application.
 
 =item lib
 
@@ -99,25 +101,24 @@ a directory containing helper scripts:
 
 =over 4
 
-=item C<my_app_create.pl>
+=item C<myapp_create.pl>
 
 helper script to generate new component modules
 
-=item C<my_app_server.pl>
+=item C<myapp_server.pl>
 
 runs the generated application within a Catalyst test server, which can be
 used for testing without resorting to a full-blown web server configuration.
 
-=item C<my_app_cgi.pl>
+=item C<myapp_cgi.pl>
 
 runs the generated application as a CGI script
 
-=item C<my_app_fastcgi.pl>
+=item C<myapp_fastcgi.pl>
 
 runs the generated application as a FastCGI script
 
-
-=item C<my_app_test.pl>
+=item C<myapp_test.pl>
 
 runs an action of the generated application from the comand line.
 

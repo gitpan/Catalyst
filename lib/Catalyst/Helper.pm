@@ -75,22 +75,30 @@ sub mk_app {
       || eval { @{ [ getpwuid($<) ] }[6] }
       || 'Catalyst developer';
 
-    unless ( $self->{scripts} ) {
+    my $gen_scripts  = ( $self->{makefile} ) ? 0 : 1;
+    my $gen_makefile = ( $self->{scripts} )  ? 0 : 1;
+    my $gen_app = ( $self->{scripts} || $self->{makefile} ) ? 0 : 1;
+
+    if ($gen_app) {
         $self->_mk_dirs;
         $self->_mk_appclass;
-        $self->_mk_makefile;
         $self->_mk_readme;
         $self->_mk_changes;
         $self->_mk_apptest;
         $self->_mk_images;
         $self->_mk_favicon;
     }
-    $self->_mk_cgi;
-    $self->_mk_fastcgi;
-    $self->_mk_server;
-    $self->_mk_test;
-    $self->_mk_create;
-    return 1;
+    if ($gen_makefile) {
+        $self->_mk_makefile;
+    }
+    if ($gen_scripts) {
+        $self->_mk_cgi;
+        $self->_mk_fastcgi;
+        $self->_mk_server;
+        $self->_mk_test;
+        $self->_mk_create;
+    }
+    return $self->{dir};
 }
 
 =head3 mk_component
@@ -107,7 +115,8 @@ sub mk_component {
     $self->{author} = $self->{author} = $ENV{'AUTHOR'}
       || eval { @{ [ getpwuid($<) ] }[6] }
       || 'A clever guy';
-    $self->{base} = File::Spec->catdir( $FindBin::Bin, '..' );
+    $self->{base} ||= File::Spec->catdir( $FindBin::Bin, '..' );
+    die $self->{base};
     unless ( $_[0] =~ /^(?:model|view|controller)$/i ) {
         my $helper = shift;
         my @args   = @_;
@@ -134,13 +143,15 @@ sub mk_component {
         $type              = 'M' if $type =~ /model/i;
         $type              = 'V' if $type =~ /view/i;
         $type              = 'C' if $type =~ /controller/i;
-        $type              = $self->{long_type} unless $self->{short};
-        $self->{type}      = $type;
-        $self->{name}      = $name;
-        $self->{class}     = "$app\::$type\::$name";
+        my $appdir = File::Spec->catdir( split /\:\:/, $app );
+        my $test_path =
+          File::Spec->catdir( $FindBin::Bin, '..', 'lib', $appdir, 'C' );
+        $type = $self->{long_type} unless -d $test_path;
+        $self->{type}  = $type;
+        $self->{name}  = $name;
+        $self->{class} = "$app\::$type\::$name";
 
         # Class
-        my $appdir = File::Spec->catdir( split /\:\:/, $app );
         my $path =
           File::Spec->catdir( $FindBin::Bin, '..', 'lib', $appdir, $type );
         my $file = $name;
@@ -218,7 +229,10 @@ sub mk_file {
     my ( $self, $file, $content ) = @_;
     if ( -e $file ) {
         print qq/ exists "$file"\n/;
-        return 0 unless ( $self->{'.newfiles'} || $self->{scripts} );
+        return 0
+          unless ( $self->{'.newfiles'}
+            || $self->{scripts}
+            || $self->{makefile} );
         if ( $self->{'.newfiles'} ) {
             if ( my $f = IO::File->new("< $file") ) {
                 my $oldcontent = join( '', (<$f>) );
@@ -331,6 +345,13 @@ sub _mk_makefile {
     $self->{path} .= '.pm';
     my $dir = $self->{dir};
     $self->render_file( 'makefile', "$dir\/Makefile.PL" );
+
+    if ( $self->{makefile} ) {
+
+        # deprecate the old Build.PL file when regenerating Makefile.PL
+        $self->_deprecate_file(
+            File::Spec->catdir( $self->{dir}, 'Build.PL' ) );
+    }
 }
 
 sub _mk_readme {
@@ -427,6 +448,27 @@ sub _mk_favicon {
     my $favicon = pack "H*", $hex;
     $self->mk_file( File::Spec->catfile( $root, "favicon.ico" ), $favicon );
 
+}
+
+sub _deprecate_file {
+    my ( $self, $file ) = @_;
+    if ( -e $file ) {
+        my $oldcontent;
+        if ( my $f = IO::File->new("< $file") ) {
+            $oldcontent = join( '', (<$f>) );
+        }
+        my $newfile = $file . '.deprecated';
+        if ( my $f = IO::File->new("> $newfile") ) {
+            binmode $f;
+            print $f $oldcontent;
+            print qq/created "$newfile"\n/;
+            unlink $file;
+            print qq/removed "$file"\n/;
+            return 1;
+        }
+        Catalyst::Exception->throw(
+            message => qq/Couldn't create "$file", "$!"/ );
+    }
 }
 
 =head1 HELPERS
@@ -538,7 +580,7 @@ sub default : Private {
 #    my ( $self, $c ) = @_;
 #
 #    # Forward to View unless response body is already defined
-#    $c->forward('View::') unless $c->response->body;
+#    $c->forward( $c->view('') ) unless $c->response->body;
 #}
 
 =head1 AUTHOR
@@ -556,18 +598,20 @@ it under the same terms as Perl itself.
 __makefile__
 use inc::Module::Install;
 
-name('[% name %]');
+name('[% dir %]');
 abstract('Catalyst Application');
 author('[% author %]');
 version_from('[% path %]');
 license('perl');
 
-requires( Catalyst => '5.57' );
+include('ExtUtils::AutoInstall');
 
-install_script( glob('script/*.pl') );
+requires( Catalyst => '5.58' );
 
 catalyst_files();
 
+install_script( glob('script/*.pl') );
+auto_install();
 &WriteAll;
 __readme__
 Run script/[% appprefix %]_server.pl to test the application.
@@ -880,18 +924,15 @@ use Catalyst::Helper;
 
 my $force = 0;
 my $help  = 0;
-my $short = 0;
 
 GetOptions(
     'nonew|force' => \$force,
-    'help|?'      => \$help,
-    'short'       => \$short
+    'help|?'      => \$help
  );
 
 pod2usage(1) if ( $help || !$ARGV[0] );
 
-my $helper =
-    Catalyst::Helper->new( { '.newfiles' => !$force, short => $short } );
+my $helper = Catalyst::Helper->new( { '.newfiles' => !$force } );
 
 pod2usage(1) unless $helper->mk_component( '[% name %]', @ARGV );
 
@@ -908,7 +949,6 @@ pod2usage(1) unless $helper->mk_component( '[% name %]', @ARGV );
  Options:
    -force    don't create a .new file where a file to be created exists
    -help     display this help and exits
-   -short    use short types, like C instead of Controller...
 
  Examples:
    [% appprefix %]_create.pl controller My::Controller
@@ -963,6 +1003,8 @@ See L<[% app %]>
 Catalyst [% long_type %].
 [% IF long_type == 'Controller' %]
 =head1 METHODS
+
+=cut
 
 #
 # Uncomment and modify this or add new actions to fit your needs

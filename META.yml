@@ -1,5 +1,5 @@
 name: Catalyst
-version: 5.57
+version: 5.58
 abstract: Catalyst Web Framework
 author: Sebastian Riedel
 license: perl
@@ -31,11 +31,9 @@ requires:
   Tree::Simple: 0
   Tree::Simple::Visitor::FindByPath: 0
   URI: 1.35
-recommends:
-  Catalyst::Engine::Apache: 1.00
-  FCGI: 0
-  FCGI::ProcManager: 0
-  PAR: 0
+  File::Copy::Recursive: 0
+  inc::Module::Install: 0
+  ExtUtils::AutoInstall: 0
 no_index:
   directory:
     - inc

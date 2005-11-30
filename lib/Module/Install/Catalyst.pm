@@ -14,7 +14,8 @@ our @CLASSES   = ();
 our $ENGINE    = 'CGI';
 our $CORE      = 0;
 our $MULTIARCH = 0;
-our $SCRIPT    = '';
+our $SCRIPT;
+our $USAGE;
 
 =head1 NAME
 
@@ -126,6 +127,15 @@ sub catalyst_par_script {
     $SCRIPT = $script;
 }
 
+=head2 catalyst_par_usage($usage)
+
+=cut
+
+sub catalyst_par_usage {
+    my ( $self, $usage ) = @_;
+    $USAGE = $usage;
+}
+
 package Catalyst::Module::Install;
 
 use strict;
@@ -141,17 +151,16 @@ sub _catalyst_par {
     $name = lc $name;
     $par ||= "$name.par";
     my $engine = $Module::Install::Catalyst::ENGINE || 'CGI';
-    my $script = $Module::Install::Catalyst::SCRIPT || "$name\_cgi.pl";
 
     # Check for PAR
     eval "use PAR ()";
-    die "Please install PAR" if $@;
+    die "Please install PAR\n" if $@;
     eval "use PAR::Packer ()";
-    die "Please install PAR::Packer" if $@;
+    die "Please install PAR::Packer\n" if $@;
     eval "use App::Packer::PAR ()";
-    die "Please install App::Packer::PAR" if $@;
+    die "Please install App::Packer::PAR\n" if $@;
     eval "use Module::ScanDeps ()";
-    die "Please install Module::ScanDeps" if $@;
+    die "Please install Module::ScanDeps\n" if $@;
 
     my $root = $FindBin::Bin;
     my $path = File::Spec->catfile( 'blib', 'lib', split( '::', $self->name ) );
@@ -171,15 +180,51 @@ sub _catalyst_par {
 
     my $classes = '';
     $classes .= "    require $_;\n" for @Catalyst::Module::Install::CLASSES;
-    my $tmp_file = IO::File->new(" > $par_pl ");
+
+    unlink $par_pl;
+
+    my $usage = $Module::Install::Catalyst::USAGE || <<"EOF";
+Usage:
+    [parl] $name\[.par] [script] [arguments]
+
+  Examples:
+    parl $name.par $name\_server.pl -r
+    myapp $name\_cgi.pl
+EOF
+
+    my $script   = $Module::Install::Catalyst::SCRIPT;
+    my $tmp_file = IO::File->new("> $par_pl ");
     print $tmp_file <<"EOF";
-require lib;
-if (\$0 !~ /par.pl\.\\w+\$/) {
-    import lib '../lib';
-    require FindBin;
-    require "\$FindBin::Bin/script/$script";
+if ( \$ENV{PAR_PROGNAME} ) {
+    my \$zip = \$PAR::LibCache{\$ENV{PAR_PROGNAME}}
+        || Archive::Zip->new(__FILE__);
+    my \$script = '$script';
+    \$ARGV[0] ||= \$script if \$script;
+    if ( ( \@ARGV == 0 ) || ( \$ARGV[0] eq '-h' ) || ( \$ARGV[0] eq '-help' )) {
+        my \@members = \$zip->membersMatching('.*script/.*\.pl');
+        my \$list = "  Available scripts:\\n";
+        for my \$member ( \@members ) {
+            my \$name = \$member->fileName;
+            \$name =~ /(\\w+\\.pl)\$/;
+            \$name = \$1;
+            next if \$name =~ /^main\.pl\$/;
+            next if \$name =~ /^par\.pl\$/;
+            \$list .= "    \$name\\n";
+        }
+        die <<"END";
+$usage
+\$list
+END
+    }
+    my \$file = shift \@ARGV;
+    \$file =~ s/^.*[\\/\\\\]//;
+    \$file =~ s/\\.[^.]*\$//i;
+    my \$member = eval { \$zip->memberNamed("./script/\$file.pl") };
+    die qq/Can't open perl script "\$file"\n/ unless \$member;
+    PAR::_run_member( \$member, 1 );
 }
 else {
+    require lib;
     import lib 'lib';
     \$ENV{CATALYST_ENGINE} = '$engine';
     require $class;
@@ -191,6 +236,9 @@ else {
     require Catalyst::Controller;
     require Catalyst::Model;
     require Catalyst::View;
+    require Getopt::Long;
+    require Pod::Usage;
+    require Pod::Text;
     $classes
 }
 EOF

@@ -6,6 +6,8 @@ author('Sebastian Riedel');
 version_from('lib/Catalyst.pm');
 license('perl');
 
+include('ExtUtils::AutoInstall');
+
 requires( 'perl'               => '5.8.1' );
 requires( 'UNIVERSAL::require' => "0.10" );
 requires('Class::Accessor::Fast');
@@ -32,14 +34,32 @@ requires('Time::HiRes');
 requires('Tree::Simple');
 requires('Tree::Simple::Visitor::FindByPath');
 requires( 'URI' => 1.35 );
+requires('File::Copy::Recursive');
+requires('inc::Module::Install');
+requires('ExtUtils::AutoInstall');
 
-recommends( 'Catalyst::Engine::Apache' => '1.00' );
-recommends('FCGI');
-recommends('FCGI::ProcManager');
-recommends('PAR');
+features(
+    'Apache/mod_perl Support' => [
+        -default                   => 0,
+        'Catalyst::Engine::Apache' => '1.00'
+    ],
+    'FastCGI Support' => [
+        -default            => 0,
+        'FCGI'              => 0,
+        'FCGI::ProcManager' => 0
+    ],
+    'PAR Support' => [
+        -default => 0,
+        'PAR'    => 0
+    ],
+    'CPANPLUS (for easier installations)' => [
+        -default   => 1,
+        'CPANPLUS' => 0
+    ],
+);
 
 install_script( glob('script/*.pl') );
-
+auto_install();
 &WriteAll;
 
 print( '*' x 80, "\n" );
@@ -50,17 +70,6 @@ my $banner =
   . " again!";
 print " $banner \n";
 print( '*' x 80, "\n" );
-
-print <<'EOF';
-
-                    ____      _        _           _
-                   / ___|__ _| |_ __ _| |_   _ ___| |_
-                  | |   / _` | __/ _` | | | | / __| __|
-                  | |__| (_| | || (_| | | |_| \__ \ |_
-                   \____\__ _|\__\__ _|_|\__  |___/\__|
-                                         |___/  carpe diem!
-
-EOF
 
 eval "use FCGI";
 print qq/ Install "FCGI" for FastCGI support.\n/ if $@;
@@ -74,14 +83,11 @@ print qq/ Install "PAR" for PAR packaging support.\n/ if $@;
 print <<"EOF";
 
  Important:
-    The Apache engines have been moved to a separate package in Catalyst 5.5.
-    Please install Catalyst::Engine::Apache if you need Apache support.
-
     Install Task::Catalyst to get everything you need to start writing
     serious applications with Catalyst.
 
+        perl -MCPANPLUS -e 'install Task::Catalyst'
         perl -MCPAN -e 'install Task::Catalyst'
-
 
  Have fun!
 EOF
