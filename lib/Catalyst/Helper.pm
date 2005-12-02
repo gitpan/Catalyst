@@ -606,7 +606,7 @@ license('perl');
 
 include('ExtUtils::AutoInstall');
 
-requires( Catalyst => '5.58' );
+requires( Catalyst => '5.60' );
 
 catalyst_files();
 
@@ -803,7 +803,9 @@ if ( $debug ) {
     $ENV{CATALYST_DEBUG} = 1;
 }
 
-use [% name %];
+# This is require instead of use so that the above environment
+# variables can be set at runtime.
+require [% name %];
 
 [% name %]->run( $port, $host, {
     argv          => \@argv,
