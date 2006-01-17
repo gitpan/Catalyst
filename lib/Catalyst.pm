@@ -1,7 +1,7 @@
 package Catalyst;
 
 use strict;
-use base 'Catalyst::Base';
+use base 'Catalyst::Component';
 use bytes;
 use UNIVERSAL::require;
 use Catalyst::Exception;
@@ -10,13 +10,18 @@ use Catalyst::Request;
 use Catalyst::Request::Upload;
 use Catalyst::Response;
 use Catalyst::Utils;
+use Catalyst::Controller;
+use File::stat;
 use NEXT;
 use Text::SimpleTable;
 use Path::Class;
 use Time::HiRes qw/gettimeofday tv_interval/;
 use URI;
 use Scalar::Util qw/weaken/;
+use Tree::Simple qw/use_weak_refs/;
+use Tree::Simple::Visitor::FindByUID;
 use attributes;
+use YAML ();
 
 __PACKAGE__->mk_accessors(
     qw/counter request response state action stack namespace/
@@ -43,7 +48,7 @@ our $DETACH    = "catalyst_detach\n";
 require Module::Pluggable::Fast;
 
 # Helper script generation
-our $CATALYST_SCRIPT_GEN = 23;
+our $CATALYST_SCRIPT_GEN = 25;
 
 __PACKAGE__->mk_classdata($_)
   for qw/components arguments dispatcher engine log dispatcher_class
@@ -54,7 +59,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.61';
+our $VERSION = '5.62';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -67,7 +72,7 @@ sub import {
 
     unless ( $caller->isa('Catalyst') ) {
         no strict 'refs';
-        push @{"$caller\::ISA"}, $class;
+        push @{"$caller\::ISA"}, $class, 'Catalyst::Controller';
     }
 
     $caller->arguments( [@arguments] );
@@ -241,7 +246,10 @@ in an arrayref. The action will receive the arguments in C<@_> and
 C<$c-E<gt>req-E<gt>args>. Upon returning from the function,
 C<$c-E<gt>req-E<gt>args> will be restored to the previous values.
 
-    $c->forward('/foo');
+Any data C<return>ed from the action forwarded to, will be returned by the
+call to forward.
+
+    my $foodata = $c->forward('/foo');
     $c->forward('index');
     $c->forward(qw/MyApp::Model::CDBI::Foo do_stuff/);
     $c->forward('MyApp::View::TT');
@@ -363,13 +371,23 @@ sub component {
 
             if ( exists $c->components->{$try} ) {
 
-                return $c->components->{$try};
+                my $comp = $c->components->{$try};
+                if ( ref $comp && $comp->can('ACCEPT_CONTEXT') ) {
+                    return $comp->ACCEPT_CONTEXT($c);
+                }
+                else { return $comp }
             }
         }
 
         foreach my $component ( keys %{ $c->components } ) {
-
-            return $c->components->{$component} if $component =~ /$name/i;
+            my $comp;
+            $comp = $c->components->{$component} if $component =~ /$name/i;
+            if ($comp) {
+                if ( ref $comp && $comp->can('ACCEPT_CONTEXT') ) {
+                    return $comp->ACCEPT_CONTEXT($c);
+                }
+                else { return $comp }
+            }
         }
 
     }
@@ -388,7 +406,7 @@ Gets a L<Catalyst::Controller> instance by name.
 sub controller {
     my ( $c, $name ) = @_;
     my $controller = $c->comp("Controller::$name");
-    return $controller if $controller;
+    return $controller if defined $controller;
     return $c->comp("C::$name");
 }
 
@@ -403,7 +421,7 @@ Gets a L<Catalyst::Model> instance by name.
 sub model {
     my ( $c, $name ) = @_;
     my $model = $c->comp("Model::$name");
-    return $model if $model;
+    return $model if defined $model;
     return $c->comp("M::$name");
 }
 
@@ -418,7 +436,7 @@ Gets a L<Catalyst::View> instance by name.
 sub view {
     my ( $c, $name ) = @_;
     my $view = $c->comp("View::$name");
-    return $view if $view;
+    return $view if defined $view;
     return $c->comp("V::$name");
 }
 
@@ -429,6 +447,12 @@ sub view {
 Returns or takes a hashref containing the application's configuration.
 
     __PACKAGE__->config({ db => 'dsn:SQLite:foo.db' });
+
+You can also use a L<YAML> config file like myapp.yml in your
+applications home directory.
+
+    ---
+    db: dsn:SQLite:foo.db
 
 =head2 $c->debug
 
@@ -450,10 +474,16 @@ L<Catalyst::Engine>.
 
 =head2 $c->log
 
-Returns the logging object instance. Unless it is already set, Catalyst
-sets this up with a L<Catalyst::Log> object. To use your own log class:
+Returns the logging object instance. Unless it is already set, Catalyst sets
+this up with a L<Catalyst::Log> object. To use your own log class, set the
+logger with the C<< __PACKAGE__->log >> method prior to calling
+C<< __PACKAGE__->setup >>.
 
-    $c->log( MyLogger->new );
+ __PACKAGE__->log( MyLogger->new );
+ __PACKAGE__->setup;
+
+And later:
+
     $c->log->info( 'Now logging with my own logger!' );
 
 Your log class should implement the methods described in the
@@ -558,11 +588,21 @@ sub setup {
         }
     }
 
+    $class->setup_home( delete $flags->{home} );
+
+    # YAML config support
+    my $confpath = $class->config->{file}
+      || $class->path_to(
+        ( Catalyst::Utils::appprefix( ref $class || $class ) . '.yml' ) );
+    my $conf = {};
+    $conf = YAML::LoadFile($confpath) if -f $confpath;
+    my $oldconf = $class->config;
+    $class->config( { %$oldconf, %$conf } );
+
     $class->setup_log( delete $flags->{log} );
     $class->setup_plugins( delete $flags->{plugins} );
     $class->setup_dispatcher( delete $flags->{dispatcher} );
     $class->setup_engine( delete $flags->{engine} );
-    $class->setup_home( delete $flags->{home} );
 
     for my $flag ( sort keys %{$flags} ) {
 
@@ -591,7 +631,9 @@ EOF
 
         {
             no strict 'refs';
-            @plugins = grep { /^Catalyst::Plugin/ } @{"$class\::ISA"};
+            @plugins =
+              map { $_ . ' ' . ( $_->VERSION || '' ) }
+              grep { /^Catalyst::Plugin/ } @{"$class\::ISA"};
         }
 
         if (@plugins) {
@@ -781,7 +823,7 @@ sub welcome_message {
                  <p>Welcome to the wonderful world of Catalyst.
                     This <a href="http://en.wikipedia.org/wiki/MVC">MVC</a>
                     framework will make web development something you had
-                    never expected it to be: Fun, rewarding and quick.</p>
+                    never expected it to be: Fun, rewarding, and quick.</p>
                  <h2>What to do now?</h2>
                  <p>That really depends  on what <b>you</b> want to do.
                     We do, however, provide you with a few starting points.</p>
@@ -792,12 +834,12 @@ perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual.po
                  <h2>What to do next?</h2>
                  <p>Next it's time to write an actual application. Use the
                     helper scripts to generate <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AController%3A%3A&amp;mode=all">controllers</a>,
-                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AModel%3A%3A&amp;mode=all">models</a> and
-                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AView%3A%3A&amp;mode=all">views</a>,
+                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AModel%3A%3A&amp;mode=all">models</a>, and
+                    <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3AView%3A%3A&amp;mode=all">views</a>;
                     they can save you a lot of work.</p>
                     <pre><code>script/${prefix}_create.pl -help</code></pre>
                     <p>Also, be sure to check out the vast and growing
-                    collection of <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3APlugin%3A%3A&amp;mode=all">plugins for Catalyst on CPAN</a>,
+                    collection of <a href="http://cpansearch.perl.org/search?query=Catalyst%3A%3APlugin%3A%3A&amp;mode=all">plugins for Catalyst on CPAN</a>;
                     you are likely to find what you need there.
                     </p>
 
@@ -884,17 +926,11 @@ via $c->error.
 
 sub execute {
     my ( $c, $class, $code ) = @_;
-    $class = $c->components->{$class} || $class;
+    $class = $c->component($class) || $class;
     $c->state(0);
 
-    my $callsub =
-        ( caller(0) )[0]->isa('Catalyst::Action')
-      ? ( caller(2) )[3]
-      : ( caller(1) )[3];
-
-    my $action = '';
     if ( $c->debug ) {
-        $action = "$code";
+        my $action = "$code";
         $action = "/$action" unless $action =~ /\-\>/;
         $c->counter->{"$code"}++;
 
@@ -906,8 +942,61 @@ sub execute {
             return $c->state;
         }
 
-        $action = "-> $action" if $callsub =~ /forward$/;
+        # determine if the call was the result of a forward
+        # this is done by walking up the call stack and looking for a calling
+        # sub of Catalyst::forward before the eval
+        my $callsub = q{};
+        for my $index ( 1 .. 10 ) {
+            last
+              if ( ( caller($index) )[0] eq 'Catalyst'
+                && ( caller($index) )[3] eq '(eval)' );
+
+            if ( ( caller($index) )[3] =~ /forward$/ ) {
+                $callsub = ( caller($index) )[3];
+                $action  = "-> $action";
+                last;
+            }
+        }
+
+        my $node = Tree::Simple->new(
+            {
+                action  => $action,
+                elapsed => undef,     # to be filled in later
+            }
+        );
+        $node->setUID( "$code" . $c->counter->{"$code"} );
+
+        unless ( ( $code->name =~ /^_.*/ )
+            && ( !$c->config->{show_internal_actions} ) )
+        {
+
+            # is this a root-level call or a forwarded call?
+            if ( $callsub =~ /forward$/ ) {
+
+                # forward, locate the caller
+                if ( my $parent = $c->stack->[-1] ) {
+                    my $visitor = Tree::Simple::Visitor::FindByUID->new;
+                    $visitor->searchForUID(
+                        "$parent" . $c->counter->{"$parent"} );
+                    $c->{stats}->accept($visitor);
+                    if ( my $result = $visitor->getResult ) {
+                        $result->addChild($node);
+                    }
+                }
+                else {
+
+                    # forward with no caller may come from a plugin
+                    $c->{stats}->addChild($node);
+                }
+            }
+            else {
+
+                # root-level call
+                $c->{stats}->addChild($node);
+            }
+        }
     }
+
     push( @{ $c->stack }, $code );
     my $elapsed = 0;
     my $start   = 0;
@@ -919,18 +1008,35 @@ sub execute {
         unless ( ( $code->name =~ /^_.*/ )
             && ( !$c->config->{show_internal_actions} ) )
         {
-            push @{ $c->{stats} }, [ $action, sprintf( '%fs', $elapsed ) ];
+
+            # FindByUID uses an internal die, so we save the existing error
+            my $error = $@;
+
+            # locate the node in the tree and update the elapsed time
+            my $visitor = Tree::Simple::Visitor::FindByUID->new;
+            $visitor->searchForUID( "$code" . $c->counter->{"$code"} );
+            $c->{stats}->accept($visitor);
+            if ( my $result = $visitor->getResult ) {
+                my $value = $result->getNodeValue;
+                $value->{elapsed} = sprintf( '%fs', $elapsed );
+                $result->setNodeValue($value);
+            }
+
+            # restore error
+            $@ = $error || undef;
         }
     }
+    my $last = ${ $c->stack }[-1];
     pop( @{ $c->stack } );
 
     if ( my $error = $@ ) {
-
         if ( $error eq $DETACH ) { die $DETACH if $c->depth > 1 }
         else {
             unless ( ref $error ) {
                 chomp $error;
-                $error = qq/Caught exception "$error"/;
+                my $class = $last->class;
+                my $name  = $last->name;
+                $error = qq/Caught exception in $class->$name "$error"/;
             }
             $c->error($error);
             $c->state(0);
@@ -1015,7 +1121,19 @@ sub finalize_headers {
 
     # Content-Length
     if ( $c->response->body && !$c->response->content_length ) {
-        $c->response->content_length( bytes::length( $c->response->body ) );
+
+        # get the length from a filehandle
+        if ( ref $c->response->body && $c->response->body->can('read') ) {
+            if ( my $stat = stat $c->response->body ) {
+                $c->response->content_length( $stat->size );
+            }
+            else {
+                $c->log->warn('Serving filehandle without a content-length');
+            }
+        }
+        else {
+            $c->response->content_length( bytes::length( $c->response->body ) );
+        }
     }
 
     # Errors
@@ -1081,11 +1199,11 @@ sub handle_request {
     # Always expect worst case!
     my $status = -1;
     eval {
-        my @stats = ();
+        my $stats = ( $class->debug ) ? Tree::Simple->new: q{};
 
         my $handler = sub {
             my $c = $class->prepare(@arguments);
-            $c->{stats} = \@stats;
+            $c->{stats} = $stats;
             $c->dispatch;
             return $c->finalize;
         };
@@ -1099,7 +1217,15 @@ sub handle_request {
               ( $elapsed == 0 ? '??' : ( 1 / $elapsed ) );
             my $t = Text::SimpleTable->new( [ 64, 'Action' ], [ 9, 'Time' ] );
 
-            for my $stat (@stats) { $t->row( $stat->[0], $stat->[1] ) }
+            $stats->traverse(
+                sub {
+                    my $action = shift;
+                    my $stat   = $action->getNodeValue;
+                    $t->row( ( q{ } x $action->getDepth ) . $stat->{action},
+                        $stat->{elapsed} || '??' );
+                }
+            );
+
             $class->log->info(
                 "Request took ${elapsed}s ($av/s)\n" . $t->draw );
         }
@@ -1433,7 +1559,7 @@ sub setup_components {
     my $callback = sub {
         my ( $component, $context ) = @_;
 
-        unless ( $component->isa('Catalyst::Component') ) {
+        unless ( $component->can('COMPONENT') ) {
             return $component;
         }
 
@@ -1442,7 +1568,7 @@ sub setup_components {
 
         my $instance;
 
-        eval { $instance = $component->new( $context, $config ); };
+        eval { $instance = $component->COMPONENT( $context, $config ); };
 
         if ( my $error = $@ ) {
 
@@ -1541,7 +1667,7 @@ sub setup_engine {
         $engine = 'Catalyst::Engine::' . $ENV{ uc($class) . '_ENGINE' };
     }
 
-    if ( !$engine && $ENV{MOD_PERL} ) {
+    if ( $ENV{MOD_PERL} ) {
 
         # create the apache method
         {
@@ -1557,21 +1683,25 @@ sub setup_engine {
 
         if ( $software eq 'mod_perl' ) {
 
-            if ( $version >= 1.99922 ) {
-                $engine = 'Catalyst::Engine::Apache2::MP20';
-            }
+            if ( !$engine ) {
 
-            elsif ( $version >= 1.9901 ) {
-                $engine = 'Catalyst::Engine::Apache2::MP19';
-            }
+                if ( $version >= 1.99922 ) {
+                    $engine = 'Catalyst::Engine::Apache2::MP20';
+                }
 
-            elsif ( $version >= 1.24 ) {
-                $engine = 'Catalyst::Engine::Apache::MP13';
-            }
+                elsif ( $version >= 1.9901 ) {
+                    $engine = 'Catalyst::Engine::Apache2::MP19';
+                }
 
-            else {
-                Catalyst::Exception->throw( message =>
-                      qq/Unsupported mod_perl version: $ENV{MOD_PERL}/ );
+                elsif ( $version >= 1.24 ) {
+                    $engine = 'Catalyst::Engine::Apache::MP13';
+                }
+
+                else {
+                    Catalyst::Exception->throw( message =>
+                          qq/Unsupported mod_perl version: $ENV{MOD_PERL}/ );
+                }
+
             }
 
             # install the correct mod_perl handler

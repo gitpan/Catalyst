@@ -102,9 +102,9 @@ sub finalize_error {
               . '</code></p>'
         } @{ $c->error };
         $error ||= 'No output';
-        $error = "<pre>$error</pre>";
+        $error = qq{<pre wrap="">$error</pre>};
         $title = $name = "$name on Catalyst $Catalyst::VERSION";
-        $name = "<h1>$name</h1>";
+        $name  = "<h1>$name</h1>";
 
         # Don't show context in the dump
         delete $c->req->{_context};
@@ -128,7 +128,7 @@ sub finalize_error {
             push @infos, sprintf <<"EOF", $name, $value;
 <h2><a href="#" onclick="toggleDump('dump_$i'); return false">%s</a></h2>
 <div id="dump_$i">
-    <pre>%s</pre>
+    <pre wrap="">%s</pre>
 </div>
 EOF
             $i++;
@@ -142,12 +142,10 @@ EOF
 <pre>
 (en) Please come back later
 (de) Bitte versuchen sie es spaeter nocheinmal
-(nl) Gelieve te komen later terug
+(at) Konnten's bitt'schoen spaeter nochmal reinschauen
 (no) Vennligst prov igjen senere
-(fr) Veuillez revenir plus tard
-(es) Vuelto por favor mas adelante
-(pt) Voltado por favor mais tarde
-(it) Ritornato prego più successivamente
+(dk) Venligst prov igen senere
+(pl) Prosze sprobowac pozniej
 </pre>
 
         $name = '';
@@ -235,6 +233,15 @@ EOF
             font-size: medium;
             font-weight: normal;
         }
+        /* from http://users.tkk.fi/~tkarvine/linux/doc/pre-wrap/pre-wrap-css3-mozilla-opera-ie.html */
+        /* Browser specific (not valid) styles to make preformatted text wrap */
+        pre { 
+            white-space: pre-wrap;       /* css-3 */
+            white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
+            white-space: -pre-wrap;      /* Opera 4-6 */
+            white-space: -o-pre-wrap;    /* Opera 7 */
+            word-wrap: break-word;       /* Internet Explorer 5.5+ */
+        }
     </style>
 </head>
 <body>
@@ -246,6 +253,12 @@ EOF
 </body>
 </html>
 
+
+    # Trick IE
+    $c->res->{body} .= ( ' ' x 512 );
+
+    # Return 500
+    $c->res->status(500);
 }
 
 =head2 $self->finalize_headers($c)

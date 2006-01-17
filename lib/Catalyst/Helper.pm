@@ -82,6 +82,7 @@ sub mk_app {
 
     if ($gen_app) {
         $self->_mk_dirs;
+        $self->_mk_config;
         $self->_mk_appclass;
         $self->_mk_readme;
         $self->_mk_changes;
@@ -354,6 +355,14 @@ sub _mk_makefile {
     }
 }
 
+sub _mk_config {
+    my $self      = shift;
+    my $dir       = $self->{dir};
+    my $appprefix = $self->{appprefix};
+    $self->render_file( 'config',
+        File::Spec->catfile( $dir, "$appprefix.yml" ) );
+}
+
 sub _mk_readme {
     my $self = shift;
     my $dir  = $self->{dir};
@@ -525,16 +534,12 @@ use warnings;
 # Set flags and add plugins for the application
 #
 #         -Debug: activates the debug mode for very useful log messages
-# Static::Simple: will serve static files from the applications root directory
+# Static::Simple: will serve static files from the application's root 
+# directory
 #
 use Catalyst qw/-Debug Static::Simple/;
 
 our $VERSION = '0.01';
-
-#
-# Configure the application
-#
-__PACKAGE__->config( name => '[% name %]' );
 
 #
 # Start the application
@@ -554,6 +559,8 @@ __PACKAGE__->setup;
 Catalyst based application.
 
 =head1 METHODS
+
+=cut
 
 =head2 default
 
@@ -598,21 +605,19 @@ it under the same terms as Perl itself.
 __makefile__
 use inc::Module::Install;
 
-name('[% dir %]');
-abstract('Catalyst Application');
-author('[% author %]');
-version_from('[% path %]');
-license('perl');
+name '[% dir %]';
+all_from '[% path %]';
 
-include('ExtUtils::AutoInstall');
+requires Catalyst => '5.62';
 
-requires( Catalyst => '5.60' );
+catalyst;
 
-catalyst_files();
-
-install_script( glob('script/*.pl') );
-auto_install();
-&WriteAll;
+install_script glob('script/*.pl');
+auto_install;
+WriteAll;
+__config__
+---
+name: [% name %]
 __readme__
 Run script/[% appprefix %]_server.pl to test the application.
 __changes__
@@ -737,7 +742,7 @@ pod2usage(1) if $help;
                  (requires -listen)
    -d -daemon    daemonize (requires -listen)
    -M -manager   specify alternate process manager
-                 (FCGI::ProcessManager sub-class)
+                 (FCGI::ProcManager sub-class)
                  or empty string to disable
 
 =head1 DESCRIPTION

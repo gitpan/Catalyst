@@ -11,6 +11,8 @@ use FindBin;
 use File::Copy::Recursive 'rcopy';
 use File::Spec ();
 
+my $SAFETY = 0;
+
 our @IGNORE =
   qw/Build Build.PL Changes MANIFEST META.yml Makefile.PL Makefile README
   _build blib lib script t inc/;
@@ -35,6 +37,22 @@ L<Module::Install> extension for Catalyst.
 
 =head1 METHODS
 
+=head2 catalyst
+
+=cut
+
+sub catalyst {
+    my $self = shift;
+    print <<EOF;
+*** Module::Install::Catalyst
+EOF
+    $self->catalyst_files;
+    $self->catalyst_par;
+    print <<EOF;
+*** Module::Install::Catalyst finished.
+EOF
+}
+
 =head2 catalyst_files
 
 =cut
@@ -54,7 +72,7 @@ sub catalyst_files {
         push @files, $name;
     }
     closedir CATDIR;
-    my @path = split '::', $self->name;
+    my @path = split '-', $self->name;
     for my $orig (@files) {
         my $path = File::Spec->catdir( 'blib', 'lib', @path, $orig );
         rcopy( $orig, $path );
@@ -84,7 +102,23 @@ sub catalyst_ignore {
 =cut
 
 # Workaround for a namespace conflict
-sub catalyst_par { Catalyst::Module::Install::_catalyst_par(@_) }
+sub catalyst_par {
+    my ( $self, $par ) = @_;
+    return if $SAFETY;
+    $SAFETY++;
+    my $name  = $self->name;
+    my $usage = $USAGE;
+    $usage =~ s/"/\\"/g;
+    my $class_string = join "', '", @CLASSES;
+    $class_string = "'$class_string'" if $class_string;
+    $self->postamble(<<EOF);
+catalyst_par :: all
+\t\$(NOECHO) \$(PERL) -Ilib -Minc::Module::Install -MModule::Install::Catalyst -e"Catalyst::Module::Install::_catalyst_par( '$par', '$name', { CLASSES => [$class_string], CORE => $CORE, ENGINE => '$ENGINE', MULTIARCH => $MULTIARCH, SCRIPT => '$SCRIPT', USAGE => q#$usage# } )"
+EOF
+    print <<EOF;
+Please run "make catalyst_par" to create the PAR package!
+EOF
+}
 
 =head2 catalyst_par_core($core)
 
@@ -148,13 +182,20 @@ use File::Copy::Recursive 'rmove';
 use File::Spec ();
 
 sub _catalyst_par {
-    my ( $self, $par ) = @_;
+    my ( $par, $class_name, $opts ) = @_;
 
-    my $name = $self->name;
+    my $ENGINE    = $opts->{ENGINE};
+    my $CLASSES   = $opts->{CLASSES} || [];
+    my $USAGE     = $opts->{USAGE};
+    my $SCRIPT    = $opts->{SCRIPT};
+    my $MULTIARCH = $opts->{MULTIARCH};
+    my $CORE      = $opts->{CORE};
+
+    my $name = $class_name;
     $name =~ s/::/_/g;
     $name = lc $name;
     $par ||= "$name.par";
-    my $engine = $Module::Install::Catalyst::ENGINE || 'CGI';
+    my $engine = $ENGINE || 'CGI';
 
     # Check for PAR
     eval "use PAR ()";
@@ -167,7 +208,7 @@ sub _catalyst_par {
     die "Please install Module::ScanDeps\n" if $@;
 
     my $root = $FindBin::Bin;
-    my $path = File::Spec->catfile( 'blib', 'lib', split( '::', $self->name ) );
+    my $path = File::Spec->catfile( 'blib', 'lib', split( '::', $class_name ) );
     $path .= '.pm';
     unless ( -f $path ) {
         print qq/Not writing PAR, "$path" doesn't exist\n/;
@@ -180,14 +221,14 @@ sub _catalyst_par {
     unlink $par_pl;
 
     my $version = $Catalyst::VERSION;
-    my $class   = $self->name;
+    my $class   = $class_name;
 
     my $classes = '';
-    $classes .= "    require $_;\n" for @Catalyst::Module::Install::CLASSES;
+    $classes .= "    require $_;\n" for @$CLASSES;
 
     unlink $par_pl;
 
-    my $usage = $Module::Install::Catalyst::USAGE || <<"EOF";
+    my $usage = $USAGE || <<"EOF";
 Usage:
     [parl] $name\[.par] [script] [arguments]
 
@@ -196,7 +237,7 @@ Usage:
     myapp $name\_cgi.pl
 EOF
 
-    my $script   = $Module::Install::Catalyst::SCRIPT;
+    my $script   = $SCRIPT;
     my $tmp_file = IO::File->new("> $par_pl ");
     print $tmp_file <<"EOF";
 if ( \$ENV{PAR_PROGNAME} ) {
@@ -258,8 +299,8 @@ EOF
         'o' => $par,
         'a' => [ grep( !/par.pl/, glob '.' ) ],
         'p' => 1,
-        'B' => $Module::Install::Catalyst::CORE,
-        'm' => $Module::Install::Catalyst::MULTIARCH
+        'B' => $CORE,
+        'm' => $MULTIARCH
     );
     App::Packer::PAR->new(
         frontend  => 'Module::ScanDeps',

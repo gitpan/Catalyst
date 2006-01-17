@@ -1,5 +1,27 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.62    2006-01-17 16:30:00
+        - Added YAML config support
+        - Added COMPONENT() and ACCEPT_CONTEXT() support
+        - Action list in debug mode is now displayed as a tree in the
+          correct execution order.
+        - Fixed engine detection to allow custom mod_perl engines.
+        - Static::Simple: Fixed bug in ignore_dirs under win32.
+        - Display version numbers of loaded plugins. (Curtis Poe)
+        - Added class and method for caught exception messages.
+        - Updated PAR support to use "make catalyst_par",
+          packages are no longer written by Makefile.PL.
+        - Automatically determine Content-Length when serving a
+          filehandle.
+        - Exceptions now return status 500.
+        - Updated for Module::Install 0.44.
+        - Fixed additional file installation for multi level app names.
+        - Added REDIRECT_URL support for applications running behind
+          a RewriteRule in Apache. (Carl Franks)
+        - Fixed FastCGI engine under win32. (Carl Franks)
+        - FastCGI doc updates (Bill Moseley)
+        - Bugfix for $c->model and friends (defined).
+
 5.61    2005-12-02 00:00:00
         - Fixed ExtUtils::AutoInstall Bootstrap Code in Makefile.PL
 

@@ -1,5 +1,5 @@
 Changes
-inc/ExtUtils/AutoInstall.pm
+inc/Module/AutoInstall.pm
 inc/Module/Install.pm
 inc/Module/Install/AutoInstall.pm
 inc/Module/Install/Base.pm
@@ -53,8 +53,6 @@ lib/Catalyst/View.pm
 lib/Module/Install/Catalyst.pm
 Makefile.PL
 MANIFEST			This list of files
-META.yml
-README
 script/catalyst.pl
 t/01use.t
 t/02pod.t
@@ -112,21 +110,22 @@ t/live_component_controller_action_path.t
 t/live_component_controller_action_private.t
 t/live_component_controller_action_regexp.t
 t/live_component_controller_action_streaming.t
-t/live_engine_reponse_cookies.t
-t/live_engine_reponse_errors.t
-t/live_engine_reponse_headers.t
-t/live_engine_reponse_large.t
-t/live_engine_reponse_redirect.t
-t/live_engine_reponse_status.t
 t/live_engine_request_body.t
 t/live_engine_request_cookies.t
 t/live_engine_request_headers.t
 t/live_engine_request_parameters.t
 t/live_engine_request_uploads.t
 t/live_engine_request_uri.t
+t/live_engine_response_cookies.t
+t/live_engine_response_errors.t
+t/live_engine_response_headers.t
+t/live_engine_response_large.t
+t/live_engine_response_redirect.t
+t/live_engine_response_status.t
 t/live_engine_setup_basics.t
 t/live_engine_setup_plugins.t
 t/live_plugin_loaded.t
+t/optional_apache-cgi-rewrite.pl
 t/optional_apache-cgi.pl
 t/optional_apache-fastcgi.pl
 t/optional_http-server-restart.t
@@ -136,6 +135,7 @@ t/optional_stress.t
 t/optional_stress.yml
 t/optional_threads.t
 t/unit_core_component.t
+t/unit_core_log.t
 t/unit_core_mvc.t
 t/unit_core_path_to.t
 t/unit_core_uri_for.t
