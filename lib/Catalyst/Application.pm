@@ -59,7 +59,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.63';
+our $VERSION = '5.62';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -246,10 +246,7 @@ in an arrayref. The action will receive the arguments in C<@_> and
 C<$c-E<gt>req-E<gt>args>. Upon returning from the function,
 C<$c-E<gt>req-E<gt>args> will be restored to the previous values.
 
-Any data C<return>ed from the action forwarded to, will be returned by the
-call to forward.
-
-    my $foodata = $c->forward('/foo');
+    $c->forward('/foo');
     $c->forward('index');
     $c->forward(qw/MyApp::Model::CDBI::Foo do_stuff/);
     $c->forward('MyApp::View::TT');
@@ -474,16 +471,10 @@ L<Catalyst::Engine>.
 
 =head2 $c->log
 
-Returns the logging object instance. Unless it is already set, Catalyst sets
-this up with a L<Catalyst::Log> object. To use your own log class, set the
-logger with the C<< __PACKAGE__->log >> method prior to calling
-C<< __PACKAGE__->setup >>.
+Returns the logging object instance. Unless it is already set, Catalyst
+sets this up with a L<Catalyst::Log> object. To use your own log class:
 
- __PACKAGE__->log( MyLogger->new );
- __PACKAGE__->setup;
-
-And later:
-
+    $c->log( MyLogger->new );
     $c->log->info( 'Now logging with my own logger!' );
 
 Your log class should implement the methods described in the
@@ -830,7 +821,6 @@ sub welcome_message {
                  <p>If you want to jump right into web development with Catalyst
                     you might want to check out the documentation.</p>
                  <pre><code>perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual/Intro.pod">Catalyst::Manual::Intro</a>
-perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual/Tutorial.pod">Catalyst::Manual::Tutorial</a></code>
 perldoc <a href="http://cpansearch.perl.org/dist/Catalyst/lib/Catalyst/Manual.pod">Catalyst::Manual</a></code></pre>
                  <h2>What to do next?</h2>
                  <p>Next it's time to write an actual application. Use the
@@ -927,7 +917,7 @@ via $c->error.
 
 sub execute {
     my ( $c, $class, $code ) = @_;
-    $class = $c->component($class) || $class;
+    $class = $c->components->{$class} || $class;
     $c->state(0);
 
     if ( $c->debug ) {
@@ -944,20 +934,15 @@ sub execute {
         }
 
         # determine if the call was the result of a forward
-        # this is done by walking up the call stack and looking for a calling
-        # sub of Catalyst::forward before the eval
-        my $callsub = q{};
-        for my $index ( 1 .. 10 ) {
-            last
-              if ( ( caller($index) )[0] eq 'Catalyst'
-                && ( caller($index) )[3] eq '(eval)' );
+        my $callsub_index = ( caller(0) )[0]->isa('Catalyst::Action') ? 2 : 1;
+        if ( ( caller($callsub_index) )[3] =~ /^NEXT/ ) {
 
-            if ( ( caller($index) )[3] =~ /forward$/ ) {
-                $callsub = ( caller($index) )[3];
-                $action  = "-> $action";
-                last;
-            }
+            # work around NEXT if execute was extended by a plugin
+            $callsub_index += 3;
         }
+        my $callsub = ( caller($callsub_index) )[3];
+
+        $action = "-> $action" if $callsub =~ /forward$/;
 
         my $node = Tree::Simple->new(
             {

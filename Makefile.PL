@@ -15,7 +15,7 @@ requires 'HTTP::Body'    => 0.5;
 requires 'HTTP::Headers' => 1.59;
 requires 'HTTP::Request';
 requires 'HTTP::Response';
-requires 'HTTP::Request::AsCGI';
+requires 'HTTP::Request::AsCGI' => '0.5';
 requires 'LWP::UserAgent';
 requires 'MIME::Types';
 requires 'Module::Pluggable::Fast' => 0.16;
@@ -27,12 +27,13 @@ requires 'Text::SimpleTable' => 0.03;
 requires 'Test::MockObject';
 requires 'Test::NoWarnings' => 0.082;
 requires 'Time::HiRes';
-requires 'Tree::Simple';
+requires 'Tree::Simple' => 1.15;
 requires 'Tree::Simple::Visitor::FindByPath';
 requires 'URI' => 1.35;
 requires 'File::Copy::Recursive';
-requires 'Module::Install::Admin' => '0.45';
-requires 'YAML';
+requires 'Module::Install::Admin' => '0.54';
+requires 'Module::Install' => '0.54';
+requires 'YAML' => '0.52';
 
 feature 'Apache/mod_perl Support',
   -default                   => 0,
