@@ -1,4 +1,4 @@
-#line 1 "/usr/home/matthewt/wdir/Catalyst/trunk/Catalyst/inc/Module/Install.pm - /usr/pkg/lib/perl5/site_perl/5.8.0/Module/Install.pm"
+#line 1 "/home/marcus/src/Catalyst/Catalyst/inc/Module/Install.pm - /usr/local/share/perl/5.8.4/Module/Install.pm"
 package Module::Install;
 
 use 5.004;

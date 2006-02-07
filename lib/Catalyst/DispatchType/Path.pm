@@ -3,6 +3,7 @@ package Catalyst::DispatchType::Path;
 use strict;
 use base qw/Catalyst::DispatchType/;
 use Text::SimpleTable;
+use URI;
 
 =head1 NAME
 
@@ -64,7 +65,7 @@ sub register {
     foreach my $r ( @{ $attrs->{Path} || [] } ) {
         unless ($r) {
             $r = $action->namespace;
-            $r = '/' unless $r;
+            $r = '/' unless length $r;
         }
         elsif ( $r !~ m!^/! ) {    # It's a relative path
             $r = $action->namespace . "/$r";
@@ -94,7 +95,8 @@ sub register {
 sub register_path {
     my ( $self, $c, $path, $action ) = @_;
     $path =~ s!^/!!;
-    $path = '/' unless $path;
+    $path = '/' unless length $path;
+    $path = URI->new($path)->canonical;
     $self->{paths}{$path} = $action;
 }
 

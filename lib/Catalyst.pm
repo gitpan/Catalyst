@@ -21,7 +21,6 @@ use Scalar::Util qw/weaken/;
 use Tree::Simple qw/use_weak_refs/;
 use Tree::Simple::Visitor::FindByUID;
 use attributes;
-use YAML ();
 
 __PACKAGE__->mk_accessors(
     qw/counter request response state action stack namespace/
@@ -48,18 +47,18 @@ our $DETACH    = "catalyst_detach\n";
 require Module::Pluggable::Fast;
 
 # Helper script generation
-our $CATALYST_SCRIPT_GEN = 25;
+our $CATALYST_SCRIPT_GEN = 27;
 
 __PACKAGE__->mk_classdata($_)
   for qw/components arguments dispatcher engine log dispatcher_class
-  engine_class context_class request_class response_class/;
+  engine_class context_class request_class response_class setup_finished/;
 
 __PACKAGE__->dispatcher_class('Catalyst::Dispatcher');
 __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.63';
+our $VERSION = '5.64';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -372,7 +371,7 @@ sub component {
             if ( exists $c->components->{$try} ) {
 
                 my $comp = $c->components->{$try};
-                if ( ref $comp && $comp->can('ACCEPT_CONTEXT') ) {
+                if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
                     return $comp->ACCEPT_CONTEXT($c);
                 }
                 else { return $comp }
@@ -446,13 +445,24 @@ sub view {
 
 Returns or takes a hashref containing the application's configuration.
 
-    __PACKAGE__->config({ db => 'dsn:SQLite:foo.db' });
+    __PACKAGE__->config( { db => 'dsn:SQLite:foo.db' } );
 
 You can also use a L<YAML> config file like myapp.yml in your
 applications home directory.
 
     ---
     db: dsn:SQLite:foo.db
+
+=cut
+
+sub config {
+    my $c = shift;
+
+    $c->log->warn("Setting config after setup has been run is not a good idea.")
+      if ( @_ and $c->setup_finished );
+
+    $c->NEXT::config(@_);
+}
 
 =head2 $c->debug
 
@@ -590,15 +600,6 @@ sub setup {
 
     $class->setup_home( delete $flags->{home} );
 
-    # YAML config support
-    my $confpath = $class->config->{file}
-      || $class->path_to(
-        ( Catalyst::Utils::appprefix( ref $class || $class ) . '.yml' ) );
-    my $conf = {};
-    $conf = YAML::LoadFile($confpath) if -f $confpath;
-    my $oldconf = $class->config;
-    $class->config( { %$oldconf, %$conf } );
-
     $class->setup_log( delete $flags->{log} );
     $class->setup_plugins( delete $flags->{plugins} );
     $class->setup_dispatcher( delete $flags->{dispatcher} );
@@ -688,6 +689,8 @@ EOF
         $class->log->info("$name powered by Catalyst $Catalyst::VERSION");
     }
     $class->log->_flush() if $class->log->can('_flush');
+
+    $class->setup_finished(1);
 }
 
 =head2 $c->uri_for( $path, [ @args ] )
@@ -1580,7 +1583,7 @@ sub setup_components {
         }
 
         Catalyst::Exception->throw( message =>
-qq/Couldn't instantiate component "$component", "new() didn't return a object"/
+qq/Couldn't instantiate component "$component", "COMPONENT() didn't return a object"/
           )
           unless ref $instance;
         return $instance;

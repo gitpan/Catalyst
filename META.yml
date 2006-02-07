@@ -38,6 +38,6 @@ requires:
   Tree::Simple::Visitor::FindByPath: 0
   UNIVERSAL::require: 0.10
   URI: 1.35
-  YAML: 0.52
+  YAML: 0.55
   perl: 5.8.1
-version: 5.63
+version: 5.64
