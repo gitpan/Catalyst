@@ -87,6 +87,7 @@ t/lib/TestApp/Controller/Action/Private.pm
 t/lib/TestApp/Controller/Action/Regexp.pm
 t/lib/TestApp/Controller/Action/Relative.pm
 t/lib/TestApp/Controller/Action/Streaming.pm
+t/lib/TestApp/Controller/Args.pm
 t/lib/TestApp/Controller/Dump.pm
 t/lib/TestApp/Controller/Engine/Request/Uploads.pm
 t/lib/TestApp/Controller/Engine/Request/URI.pm
@@ -97,6 +98,7 @@ t/lib/TestApp/Controller/Engine/Response/Large.pm
 t/lib/TestApp/Controller/Engine/Response/Redirect.pm
 t/lib/TestApp/Controller/Engine/Response/Status.pm
 t/lib/TestApp/Controller/Index.pm
+t/lib/TestApp/Plugin/FullyQualified.pm
 t/lib/TestApp/View/Dump.pm
 t/lib/TestApp/View/Dump/Parameters.pm
 t/lib/TestApp/View/Dump/Request.pm
@@ -116,6 +118,7 @@ t/live_component_controller_action_path.t
 t/live_component_controller_action_private.t
 t/live_component_controller_action_regexp.t
 t/live_component_controller_action_streaming.t
+t/live_component_controller_args.t
 t/live_engine_request_body.t
 t/live_engine_request_cookies.t
 t/live_engine_request_headers.t
@@ -144,5 +147,6 @@ t/unit_core_component.t
 t/unit_core_log.t
 t/unit_core_mvc.t
 t/unit_core_path_to.t
+t/unit_core_plugin.t
 t/unit_core_uri_for.t
 t/unit_utils_request.t

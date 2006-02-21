@@ -15,6 +15,7 @@ requires:
   Class::Inspector: 0
   File::Copy::Recursive: 0
   File::Modified: 0
+  File::Slurp: 0
   HTML::Entities: 0
   HTTP::Body: 0.5
   HTTP::Headers: 1.59
@@ -40,4 +41,4 @@ requires:
   URI: 1.35
   YAML: 0.55
   perl: 5.8.1
-version: 5.64
+version: 5.65
