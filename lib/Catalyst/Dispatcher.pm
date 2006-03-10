@@ -17,7 +17,9 @@ use overload '""' => sub { return ref shift }, fallback => 1;
 
 __PACKAGE__->mk_accessors(
     qw/tree dispatch_types registered_dispatch_types
-      method_action_class action_container_class/
+      method_action_class action_container_class
+      preload_dispatch_types postload_dispatch_types
+    /
 );
 
 # Preload these action types
@@ -37,6 +39,40 @@ See L<Catalyst>.
 =head1 DESCRIPTION
 
 =head1 METHODS
+
+=cut
+
+sub new {
+    my $self = shift;
+    my $class = ref($self) || $self;
+                                    
+    my $obj = $class->SUPER::new( @_ );
+                                       
+    # set the default pre- and and postloads
+    $obj->preload_dispatch_types(  \@PRELOAD );        
+    $obj->postload_dispatch_types( \@POSTLOAD );
+    return $obj;                        
+}
+
+=head2 $self->preload_dispatch_types
+
+An arrayref of pre-loaded dispatchtype classes
+
+Entries are considered to be available as C<Catalyst::DispatchType::CLASS>
+To use a custom class outside the regular C<Catalyst> namespace, prefix
+it with a C<+>, like so:
+
+    +My::Dispatch::Type
+
+=head2 $self->postload_dispatch_types
+
+An arrayref of post-loaded dispatchtype classes
+
+Entries are considered to be available as C<Catalyst::DispatchType::CLASS>
+To use a custom class outside the regular C<Catalyst> namespace, prefix
+it with a C<+>, like so:
+
+    +My::Dispatch::Type
 
 =head2 $self->detach( $c, $command [, \@arguments ] )
 
@@ -194,9 +230,10 @@ sub prepare_action {
         }
 
         # If not, move the last part path to args
-        unshift @args, pop @path;
+        my $arg = pop(@path);
+        $arg =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
+        unshift @args, $arg;
     }
-    s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg for @args;
 
     $c->log->debug( 'Path is "' . $c->req->match . '"' )
       if ( $c->debug && $c->req->match );
@@ -354,8 +391,8 @@ sub setup_actions {
     $self->action_container_class('Catalyst::ActionContainer');
 
     # Preload action types
-    for my $type (@PRELOAD) {
-        my $class = "Catalyst::DispatchType::$type";
+    for my $type ( @{$self->preload_dispatch_types} ) {
+        my $class = ($type =~ /^\+(.*)$/) ? $1 : "Catalyst::DispatchType::${type}";
         eval "require $class";
         Catalyst::Exception->throw( message => qq/Couldn't load "$class"/ )
           if $@;
@@ -373,8 +410,8 @@ sub setup_actions {
     }
 
     # Postload action types
-    for my $type (@POSTLOAD) {
-        my $class = "Catalyst::DispatchType::$type";
+    for my $type ( @{$self->postload_dispatch_types} ) {
+        my $class = ($type =~ /^\+(.*)$/) ? $1 : "Catalyst::DispatchType::${type}";
         eval "require $class";
         Catalyst::Exception->throw( message => qq/Couldn't load "$class"/ )
           if $@;

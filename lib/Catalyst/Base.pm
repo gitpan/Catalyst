@@ -80,10 +80,17 @@ Catalyst Base Class
 
 sub action_namespace {
     my ( $self, $c ) = @_;
-    return Catalyst::Utils::class2prefix( ref $self,
+    return $self->config->{namespace} if exists $self->config->{namespace};
+    return Catalyst::Utils::class2prefix( ref($self) || $self,
         $c->config->{case_sensitive} )
       || '';
 }
+
+=head2 $self->path_prefix($c)
+
+=cut
+
+sub path_prefix { shift->action_namespace(@_); }
 
 =head2 $self->register_actions($c)
 
@@ -111,7 +118,7 @@ sub register_actions {
         my $code   = $cache->[0];
         my $method = $methods{$code};
         next unless $method;
-        my $attrs = $self->_parse_attrs( @{ $cache->[1] } );
+        my $attrs = $self->_parse_attrs( $c, $method, @{ $cache->[1] } );
         if ( $attrs->{Private} && ( keys %$attrs > 1 ) ) {
             $c->log->debug( 'Bad action definition "'
                   . join( ' ', @{ $cache->[1] } )
@@ -135,7 +142,7 @@ sub register_actions {
 }
 
 sub _parse_attrs {
-    my ( $self, @attrs ) = @_;
+    my ( $self, $c, $name, @attrs ) = @_;
     my %attributes;
     foreach my $attr (@attrs) {
 
@@ -147,11 +154,58 @@ sub _parse_attrs {
             if ( defined $value ) {
                 ( $value =~ s/^'(.*)'$/$1/ ) || ( $value =~ s/^"(.*)"/$1/ );
             }
+            my $meth = "_parse_${key}_attr";
+            if ( $self->can($meth) ) {
+                ( $key, $value ) = $self->$meth( $c, $name, $value );
+            }
             push( @{ $attributes{$key} }, $value );
         }
     }
     return \%attributes;
 }
+
+sub _parse_Global_attr {
+    my ( $self, $c, $name, $value ) = @_;
+    return $self->_parse_Path_attr( $c, $name, "/$name" );
+}
+
+sub _parse_Absolute_attr { shift->_parse_Global_attr(@_); }
+
+sub _parse_Local_attr {
+    my ( $self, $c, $name, $value ) = @_;
+    return $self->_parse_Path_attr( $c, $name, $name );
+}
+
+sub _parse_Relative_attr { shift->_parse_Local_attr(@_); }
+
+sub _parse_Path_attr {
+    my ( $self, $c, $name, $value ) = @_;
+    $value ||= '';
+    if ( $value =~ m!^/! ) {
+        return ( 'Path', $value );
+    }
+    elsif ( length $value ) {
+        return ( 'Path', join( '/', $self->path_prefix($c), $value ) );
+    }
+    else {
+        return ( 'Path', $self->path_prefix($c) );
+    }
+}
+
+sub _parse_Regex_attr {
+    my ( $self, $c, $name, $value ) = @_;
+    return ( 'Regex', $value );
+}
+
+sub _parse_Regexp_attr { shift->_parse_Regex_attr(@_); }
+
+sub _parse_LocalRegex_attr {
+    my ( $self, $c, $name, $value ) = @_;
+    unless ( $value =~ s/^\^// ) { $value = "(?:.*?)$value"; }
+    return ( 'Regex', '^' . $self->path_prefix($c) . "/${value}" );
+}
+
+sub _parse_LocalRegexp_attr { shift->_parse_LocalRegex_attr(@_); }
 
 =head1 SEE ALSO
 

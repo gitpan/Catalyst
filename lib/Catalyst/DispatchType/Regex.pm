@@ -44,6 +44,7 @@ sub match {
 
     foreach my $compiled ( @{ $self->{compiled} || [] } ) {
         if ( my @snippets = ( $path =~ $compiled->{re} ) ) {
+            next unless $compiled->{action}->match($c);
             $c->req->action( $compiled->{path} );
             $c->req->match($path);
             $c->req->snippets( \@snippets );
@@ -63,18 +64,13 @@ sub match {
 sub register {
     my ( $self, $c, $action ) = @_;
     my $attrs = $action->attributes;
-    my @register = map { @{ $_ || [] } } @{$attrs}{ 'Regex', 'Regexp' };
-    foreach
-      my $r ( map { @{ $_ || [] } } @{$attrs}{ 'LocalRegex', 'LocalRegexp' } )
-    {
-        unless ( $r =~ s/^\^// ) { $r = "(?:.*?)$r"; }
-        push( @register, '^' . $action->namespace . '/' . $r );
-    }
+    my @register = @{ $attrs->{'Regex'} || [] };
 
     foreach my $r (@register) {
         $self->register_path( $c, $r, $action );
         $self->register_regex( $c, $r, $action );
     }
+
     return 1 if @register;
     return 0;
 }

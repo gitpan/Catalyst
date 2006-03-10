@@ -17,7 +17,7 @@ use Text::SimpleTable;
 use Path::Class;
 use Time::HiRes qw/gettimeofday tv_interval/;
 use URI;
-use Scalar::Util qw/weaken/;
+use Scalar::Util qw/weaken blessed/;
 use Tree::Simple qw/use_weak_refs/;
 use Tree::Simple::Visitor::FindByUID;
 use attributes;
@@ -58,7 +58,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.65';
+our $VERSION = '5.66';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -346,6 +346,59 @@ sub stash {
 
 Contains the return value of the last executed action.
 
+=cut
+
+# search via regex
+sub _comp_search {
+    my ($c, @names) = @_;
+
+    foreach my $name (@names) {
+        foreach my $component ( keys %{ $c->components } ) {
+            my $comp = $c->components->{$component} if $component =~ /$name/i;
+            if ($comp) {
+                if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
+                    return $comp->ACCEPT_CONTEXT($c);
+                }
+                else { return $comp }
+            }
+        }
+    }
+
+    return undef;
+}
+
+# try explicit component names
+sub _comp_explicit {
+    my ($c, @names) = @_;
+
+    foreach my $try (@names) {
+        if ( exists $c->components->{$try} ) {
+            my $comp = $c->components->{$try};
+            if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
+                return $comp->ACCEPT_CONTEXT($c);
+            }
+            else { return $comp }
+        }
+    }
+
+    return undef;
+}
+
+# like component, but try just these prefixes before regex searching,
+#  and do not try to return "sort keys %{ $c->components }"
+sub _comp_prefixes {
+    my ($c, $name, @prefixes) = @_;
+
+    my $appclass = ref $c || $c;
+
+    my @names = map { "${appclass}::${_}::${name}" } @prefixes;
+
+    my $comp = $c->_comp_explicit(@names);
+    return $comp if defined($comp);
+    $comp = $c->_comp_search($name);
+    return $comp;
+}
+
 =head2 Component Accessors
 
 =head2 $c->comp($name)
@@ -374,29 +427,11 @@ sub component {
               qw/Model M Controller C View V/
         );
 
-        foreach my $try (@names) {
+        my $comp = $c->_comp_explicit(@names);
+        return $comp if defined($comp);
 
-            if ( exists $c->components->{$try} ) {
-
-                my $comp = $c->components->{$try};
-                if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
-                    return $comp->ACCEPT_CONTEXT($c);
-                }
-                else { return $comp }
-            }
-        }
-
-        foreach my $component ( keys %{ $c->components } ) {
-            my $comp;
-            $comp = $c->components->{$component} if $component =~ /$name/i;
-            if ($comp) {
-                if ( ref $comp && $comp->can('ACCEPT_CONTEXT') ) {
-                    return $comp->ACCEPT_CONTEXT($c);
-                }
-                else { return $comp }
-            }
-        }
-
+        $comp = $c->_comp_search($name);
+        return $comp if defined($comp);
     }
 
     return sort keys %{ $c->components };
@@ -412,9 +447,7 @@ Gets a L<Catalyst::Controller> instance by name.
 
 sub controller {
     my ( $c, $name ) = @_;
-    my $controller = $c->comp("Controller::$name");
-    return $controller if defined $controller;
-    return $c->comp("C::$name");
+    return $c->_comp_prefixes($name, qw/Controller C/);
 }
 
 =head2 $c->model($name)
@@ -427,9 +460,7 @@ Gets a L<Catalyst::Model> instance by name.
 
 sub model {
     my ( $c, $name ) = @_;
-    my $model = $c->comp("Model::$name");
-    return $model if defined $model;
-    return $c->comp("M::$name");
+    return $c->_comp_prefixes($name, qw/Model M/);
 }
 
 =head2 $c->view($name)
@@ -442,9 +473,7 @@ Gets a L<Catalyst::View> instance by name.
 
 sub view {
     my ( $c, $name ) = @_;
-    my $view = $c->comp("View::$name");
-    return $view if defined $view;
-    return $c->comp("V::$name");
+    return $c->_comp_prefixes($name, qw/View V/);
 }
 
 =head2 Class data and helper classes
@@ -542,7 +571,7 @@ loads and instantiates the given class.
 
 sub plugin {
     my ( $class, $name, $plugin, @args ) = @_;
-    $class->_register_plugin($plugin, 1);
+    $class->_register_plugin( $plugin, 1 );
 
     eval { $plugin->import };
     $class->mk_classdata($name);
@@ -701,7 +730,9 @@ EOF
 Merges path with C<$c-E<gt>request-E<gt>base> for absolute uri's and
 with C<$c-E<gt>namespace> for relative uri's, then returns a
 normalized L<URI> object. If any args are passed, they are added at the
-end of the path.
+end of the path.  If the last argument to uri_for is a hash reference,
+it is assumed to contain GET parameter key/value pairs, which will be
+appended to the URI in standard fashion.
 
 =cut
 
@@ -720,7 +751,8 @@ sub uri_for {
     $namespace = '' if $path =~ /^\//;
     $path =~ s/^\///;
 
-    my $params = (scalar @args && ref $args[$#args] eq 'HASH' ? pop @args : {});
+    my $params =
+      ( scalar @args && ref $args[$#args] eq 'HASH' ? pop @args : {} );
 
     # join args with '/', or a blank string
     my $args = ( scalar @args ? '/' . join( '/', @args ) : '' );
@@ -1133,7 +1165,7 @@ sub finalize_headers {
     if ( $c->response->body && !$c->response->content_length ) {
 
         # get the length from a filehandle
-        if ( ref $c->response->body && $c->response->body->can('read') ) {
+        if ( blessed($c->response->body) && $c->response->body->can('read') ) {
             if ( my $stat = stat $c->response->body ) {
                 $c->response->content_length( $stat->size );
             }
@@ -1860,13 +1892,13 @@ the plugin name does not begin with C<Catalyst::Plugin::>.
 =cut
 
 {
-    my %PLUGINS;
-    sub registered_plugins { 
+
+    sub registered_plugins {
         my $proto = shift;
-        return sort keys %PLUGINS unless @_;
+        return sort keys %{$proto->_plugins} unless @_;
         my $plugin = shift;
-        return 1 if exists $PLUGINS{$plugin};
-        return exists $PLUGINS{"Catalyst::Plugin::$plugin"};
+        return 1 if exists $proto->_plugins->{$plugin};
+        return exists $proto->_plugins->{"Catalyst::Plugin::$plugin"};
     }
 
     sub _register_plugin {
@@ -1881,7 +1913,7 @@ the plugin name does not begin with C<Catalyst::Plugin::>.
                 message => qq/Couldn't load ${type}plugin "$plugin", $error/ );
         }
 
-        $PLUGINS{$plugin} = 1;        
+        $proto->_plugins->{$plugin} = 1;        
         unless ($instant) {
             no strict 'refs';
             unshift @{"$class\::ISA"}, $plugin;
@@ -1892,6 +1924,7 @@ the plugin name does not begin with C<Catalyst::Plugin::>.
     sub setup_plugins {
         my ( $class, $plugins ) = @_;
 
+        $class->_plugins( {} ) unless $class->_plugins;
         $plugins ||= [];
         for my $plugin ( reverse @$plugins ) {
 
@@ -2058,6 +2091,8 @@ Arthur Bergman
 Autrijus Tang
 
 Brian Cassidy
+
+Carl Franks
 
 Christian Hansen
 
