@@ -4,6 +4,9 @@ use strict;
 use base 'Class::Accessor::Fast';
 
 use IO::Socket qw[AF_INET inet_aton];
+use Carp;
+use utf8;
+use URI::QueryParam;
 
 __PACKAGE__->mk_accessors(
     qw/action address arguments cookies headers match method
@@ -488,6 +491,34 @@ sub uploads {
 =head2 $req->uri
 
 Returns a URI object for the current request. Stringifies to the URI text.
+
+=head2 $req->uri_with( { key => 'value' } );
+
+Returns a rewriten URI object for the current uri. Key/value pairs passed in
+will override existing parameters. Unmodified pairs will be preserved.
+
+=cut
+
+sub uri_with {
+    my( $self, $args ) = @_;
+    
+    carp( 'No arguments passed to uri_with()' ) unless $args;
+    
+    for my $value ( values %$args ) {
+        my $isa_ref = ref $value;
+        if( $isa_ref and $isa_ref ne 'ARRAY' ) {
+            croak( "Non-array reference ($isa_ref) passed to uri_with()" );
+        }
+        utf8::encode( $_ ) for $isa_ref ? @$value : $value;
+    };
+    my $uri = $self->uri->clone;
+    
+    $uri->query_form( {
+        %{ $uri->query_form_hash },
+        %$args
+    } );
+    return $uri;
+}
 
 =head2 $req->user
 

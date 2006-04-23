@@ -27,6 +27,16 @@ Catalyst::Request::Upload - handles file upload requests
     $upload->tempname;
     $upload->type;
 
+To specify where Catalyst should put the temporary files, set the 'uploadtmp'
+option in the Catalyst config. If unset, Catalyst will use the system temp dir.
+
+    __PACKAGE__->config( uploadtmp => '/path/to/tmpdir' );
+
+It is provided a way to have configurable temporary directory.
+If there is no config uploadtmp, system temprary directory will used.
+
+    __PACKAGE__->config( uploadtmp => '/path/to/tmpdir' );
+
 See also L<Catalyst>.
 
 =head1 DESCRIPTION

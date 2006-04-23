@@ -1,7 +1,7 @@
 abstract: The Elegant MVC Web Application Framework
 author: 'Sebastian Riedel, C<sri@oook.de>'
 distribution_type: module
-generated_by: Module::Install version 0.55
+generated_by: Module::Install version 0.61
 license: perl
 name: Catalyst
 no_index:
@@ -10,6 +10,7 @@ no_index:
     - t
 requires:
   CGI::Cookie: 0
+  Carp: 0
   Class::Accessor::Fast: 0
   Class::Data::Inheritable: 0
   Class::Inspector: 0
@@ -18,7 +19,7 @@ requires:
   File::Modified: 0
   HTML::Entities: 0
   HTTP::Body: 0.5
-  HTTP::Headers: 1.59
+  HTTP::Headers: 1.64
   HTTP::Request: 0
   HTTP::Request::AsCGI: 0.5
   HTTP::Response: 0
@@ -41,4 +42,4 @@ requires:
   URI: 1.35
   YAML: 0.55
   perl: 5.8.1
-version: 5.66
+version: 5.67

@@ -72,9 +72,14 @@ See L<Catalyst>
 
 Catalyst Base Class
 
+This is the base class for all Catalyst components. It also handles 
+dispatch of actions for controllers.
+
 =head1 METHODS
 
 =head2 $self->action_namespace($c)
+
+Determine the namespace for actions in this component.
 
 =cut
 
@@ -88,11 +93,15 @@ sub action_namespace {
 
 =head2 $self->path_prefix($c)
 
+alias for action_namespace
+
 =cut
 
 sub path_prefix { shift->action_namespace(@_); }
 
 =head2 $self->register_actions($c)
+
+register all actions for this component based on a given context.
 
 =cut
 
@@ -127,18 +136,22 @@ sub register_actions {
             next;
         }
         my $reverse = $namespace ? "$namespace/$method" : $method;
-        my $action = $self->_action_class->new(
-            {
-                name       => $method,
-                code       => $code,
-                reverse    => $reverse,
-                namespace  => $namespace,
-                class      => $class,
-                attributes => $attrs,
-            }
+        my $action = $self->create_action(
+            name       => $method,
+            code       => $code,
+            reverse    => $reverse,
+            namespace  => $namespace,
+            class      => $class,
+            attributes => $attrs,
         );
+
         $c->dispatcher->register( $c, $action );
     }
+}
+
+sub create_action {
+    my $self = shift;
+    $self->_action_class->new( { @_ } );
 }
 
 sub _parse_attrs {

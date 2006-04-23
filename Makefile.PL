@@ -7,6 +7,7 @@ all_from 'lib/Catalyst.pm';
 
 requires 'perl'               => '5.8.1';
 requires 'UNIVERSAL::require' => "0.10";
+requires 'Carp';
 requires 'Class::Accessor::Fast';
 requires 'Class::Data::Inheritable';
 requires 'Class::Inspector';
@@ -14,7 +15,7 @@ requires 'CGI::Cookie';
 requires 'File::Modified';
 requires 'HTML::Entities';
 requires 'HTTP::Body'    => 0.5;
-requires 'HTTP::Headers' => 1.59;
+requires 'HTTP::Headers' => 1.64;
 requires 'HTTP::Request';
 requires 'HTTP::Response';
 requires 'HTTP::Request::AsCGI' => '0.5';

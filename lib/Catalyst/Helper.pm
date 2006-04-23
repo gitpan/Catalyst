@@ -501,7 +501,7 @@ So when you call C<bin/create view MyView TT>, create would try to execute
 Catalyst::Helper::View::TT->mk_compclass and
 Catalyst::Helper::View::TT->mk_comptest.
 
-See L<Catalyst::Helper::View::TT> and L<Catalyst::Helper::Model::CDBI> for
+See L<Catalyst::Helper::View::TT> and L<Catalyst::Helper::Model::DBIC> for
 examples.
 
 All helper classes should be under one of the following namespaces.
@@ -544,12 +544,19 @@ use warnings;
 # Set flags and add plugins for the application
 #
 #         -Debug: activates the debug mode for very useful log messages
+#   ConfigLoader: will load the configuration from a YAML file in the
+#                 application's home directory
 # Static::Simple: will serve static files from the application's root 
-# directory
+#                 directory
 #
 use Catalyst qw/-Debug ConfigLoader Static::Simple/;
 
 our $VERSION = '0.01';
+
+#
+# Configure the application 
+#
+__PACKAGE__->config( name => '[% name %]' );
 
 #
 # Start the application
@@ -1029,8 +1036,8 @@ pod2usage(1) unless $helper->mk_component( '[% name %]', @ARGV );
    [% appprefix %]_create.pl view MyView TT
    [% appprefix %]_create.pl view TT TT
    [% appprefix %]_create.pl model My::Model
-   [% appprefix %]_create.pl model SomeDB CDBI dbi:SQLite:/tmp/my.db
-   [% appprefix %]_create.pl model AnotherDB CDBI dbi:Pg:dbname=foo root 4321
+   [% appprefix %]_create.pl model SomeDB DBIC::SchemaLoader dbi:SQLite:/tmp/my.db
+   [% appprefix %]_create.pl model AnotherDB DBIC::SchemaLoader dbi:Pg:dbname=foo root 4321
 
  See also:
    perldoc Catalyst::Manual

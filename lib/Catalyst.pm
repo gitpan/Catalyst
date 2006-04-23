@@ -14,16 +14,19 @@ use Catalyst::Controller;
 use File::stat;
 use NEXT;
 use Text::SimpleTable;
-use Path::Class;
+use Path::Class::Dir;
+use Path::Class::File;
 use Time::HiRes qw/gettimeofday tv_interval/;
 use URI;
 use Scalar::Util qw/weaken blessed/;
 use Tree::Simple qw/use_weak_refs/;
 use Tree::Simple::Visitor::FindByUID;
 use attributes;
+use utf8;
+use Carp qw/croak/;
 
 __PACKAGE__->mk_accessors(
-    qw/counter request response state action stack namespace/
+    qw/counter request response state action stack namespace stats/
 );
 
 attributes->import( __PACKAGE__, \&namespace, 'lvalue' );
@@ -58,7 +61,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.66';
+our $VERSION = '5.67';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -84,7 +87,7 @@ Catalyst - The Elegant MVC Web Application Framework
 
 =head1 SYNOPSIS
 
-    # use the helper to start a new application
+    # use the helper to create a new application
     catalyst.pl MyApp
 
     # add models, views, controllers
@@ -98,15 +101,16 @@ Catalyst - The Elegant MVC Web Application Framework
     # command line testing interface
     script/myapp_test.pl /yada
 
-    ### in MyApp.pm
+    ### in lib/MyApp.pm
     use Catalyst qw/-Debug/; # include plugins here as well
     
+	### In libMyApp/Controller/Root.pm (autocreated)
     sub foo : Global { # called for /foo, /foo/1, /foo/1/2, etc.
         my ( $self, $c, @args ) = @_; # args are qw/1 2/ for /foo/1/2
         $c->stash->{template} = 'foo.tt'; # set the template
         # lookup something from db -- stash vars are passed to TT
         $c->stash->{data} = 
-          MyApp::Model::Database::Foo->search( { country => $args[0] } );
+          $c->model('Database::Foo')->search( { country => $args[0] } );
         if ( $c->req->params->{bar} ) { # access GET or POST parameters
             $c->forward( 'bar' ); # process another action
             # do something else after forward returns            
@@ -124,7 +128,7 @@ Catalyst - The Elegant MVC Web Application Framework
     # called for all actions, from the top-most controller downwards
     sub auto : Private { 
         my ( $self, $c ) = @_;
-        if ( !$c->user ) {
+        if ( !$c->user_exists ) { # Catalyst::Plugin::Authentication
             $c->res->redirect( '/login' ); # require login
             return 0; # abort request and go immediately to end()
         }
@@ -153,7 +157,7 @@ Catalyst - The Elegant MVC Web Application Framework
     # called for /foo/bar/baz
     sub baz : Local { ... }
     
-    # first MyApp auto is called, then Foo auto, then this
+    # first Root auto is called, then Foo auto, then this
     sub auto : Private { ... }
     
     # powerful regular expression paths are also possible
@@ -167,7 +171,7 @@ See L<Catalyst::Manual::Intro> for additional information.
 
 =head1 DESCRIPTION
 
-The key concept of Catalyst is DRY (Don't Repeat Yourself).
+Catalyst is a modern framework for making web applications without the pain usually associated with this process. This document is a reference to the main Catalyst application. If you are a new user, we suggest you start with L<Catalyst::Manual::Tutorial> or  L<Catalyst::Manual::Intro>
 
 See L<Catalyst::Manual> for more documentation.
 
@@ -219,7 +223,7 @@ Specifies log level.
 
 =head1 METHODS
 
-=head2 Information about the current request
+=head2 INFORMATION ABOUT THE CURRENT REQUEST
 
 =head2 $c->action
 
@@ -241,16 +245,16 @@ corresponding to the controller of the current action. For example:
 Returns the current L<Catalyst::Request> object. See
 L<Catalyst::Request>.
 
-=head2 Processing and response to the current request
+=head2 REQUEST FLOW HANDLING
 
 =head2 $c->forward( $action [, \@arguments ] )
 
 =head2 $c->forward( $class, $method, [, \@arguments ] )
 
-Forwards processing to a private action. If you give a class name but no
-method, C<process()> is called. You may also optionally pass arguments
-in an arrayref. The action will receive the arguments in C<@_> and
-C<$c-E<gt>req-E<gt>args>. Upon returning from the function,
+Forwards processing to another action, by it's private name. If you give a
+class name but no method, C<process()> is called. You may also optionally
+pass arguments in an arrayref. The action will receive the arguments in
+C<@_> and C<$c-E<gt>req-E<gt>args>. Upon returning from the function,
 C<$c-E<gt>req-E<gt>args> will be restored to the previous values.
 
 Any data C<return>ed from the action forwarded to, will be returned by the
@@ -258,8 +262,20 @@ call to forward.
 
     my $foodata = $c->forward('/foo');
     $c->forward('index');
-    $c->forward(qw/MyApp::Model::CDBI::Foo do_stuff/);
+    $c->forward(qw/MyApp::Model::DBIC::Foo do_stuff/);
     $c->forward('MyApp::View::TT');
+
+Note that forward implies an C<<eval { }>> around the call (well, actually
+C<execute> does), thus de-fatalizing all 'dies' within the called action. If
+you want C<die> to propagate you need to do something like:
+
+    $c->forward('foo');
+    die $c->error if $c->error;
+
+Or make sure to always return true values from your actions and write your code
+like this:
+
+    $c->forward('foo') || return;
 
 =cut
 
@@ -269,44 +285,12 @@ sub forward { my $c = shift; $c->dispatcher->forward( $c, @_ ) }
 
 =head2 $c->detach( $class, $method, [, \@arguments ] )
 
-The same as C<forward>, but doesn't return.
+The same as C<forward>, but doesn't return to the previous action when 
+processing is finished. 
 
 =cut
 
 sub detach { my $c = shift; $c->dispatcher->detach( $c, @_ ) }
-
-=head2 $c->error
-
-=head2 $c->error($error, ...)
-
-=head2 $c->error($arrayref)
-
-Returns an arrayref containing error messages.  If Catalyst encounters an
-error while processing a request, it stores the error in $c->error.  This
-method should not be used to store non-fatal error messages.
-
-    my @error = @{ $c->error };
-
-Add a new error.
-
-    $c->error('Something bad happened');
-
-Clear errors.  You probably don't want to clear the errors unless you are
-implementing a custom error screen.
-
-    $c->error(0);
-
-=cut
-
-sub error {
-    my $c = shift;
-    if ( $_[0] ) {
-        my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
-        push @{ $c->{error} }, @$error;
-    }
-    elsif ( defined $_[0] ) { $c->{error} = undef }
-    return $c->{error} || [];
-}
 
 =head2 $c->response
 
@@ -342,25 +326,66 @@ sub stash {
     return $c->{stash};
 }
 
+=head2 $c->error
+
+=head2 $c->error($error, ...)
+
+=head2 $c->error($arrayref)
+
+Returns an arrayref containing error messages.  If Catalyst encounters an
+error while processing a request, it stores the error in $c->error.  This
+method should not be used to store non-fatal error messages.
+
+    my @error = @{ $c->error };
+
+Add a new error.
+
+    $c->error('Something bad happened');
+
+=cut
+
+sub error {
+    my $c = shift;
+    if ( $_[0] ) {
+        my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
+        croak @$error unless ref $c;
+        push @{ $c->{error} }, @$error;
+    }
+    elsif ( defined $_[0] ) { $c->{error} = undef }
+    return $c->{error} || [];
+}
+
+
 =head2 $c->state
 
 Contains the return value of the last executed action.
 
+=head2 $c->clear_errors
+
+Clear errors.  You probably don't want to clear the errors unless you are
+implementing a custom error screen.
+
+This is equivalent to running
+
+    $c->error(0);
+
 =cut
+
+sub clear_errors {
+    my $c = shift;
+    $c->error(0);
+}
+
+
+
 
 # search via regex
 sub _comp_search {
-    my ($c, @names) = @_;
+    my ( $c, @names ) = @_;
 
     foreach my $name (@names) {
         foreach my $component ( keys %{ $c->components } ) {
-            my $comp = $c->components->{$component} if $component =~ /$name/i;
-            if ($comp) {
-                if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
-                    return $comp->ACCEPT_CONTEXT($c);
-                }
-                else { return $comp }
-            }
+            return $c->components->{$component} if $component =~ /$name/i;
         }
     }
 
@@ -369,16 +394,10 @@ sub _comp_search {
 
 # try explicit component names
 sub _comp_explicit {
-    my ($c, @names) = @_;
+    my ( $c, @names ) = @_;
 
     foreach my $try (@names) {
-        if ( exists $c->components->{$try} ) {
-            my $comp = $c->components->{$try};
-            if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
-                return $comp->ACCEPT_CONTEXT($c);
-            }
-            else { return $comp }
-        }
+        return $c->components->{$try} if ( exists $c->components->{$try} );
     }
 
     return undef;
@@ -387,7 +406,7 @@ sub _comp_explicit {
 # like component, but try just these prefixes before regex searching,
 #  and do not try to return "sort keys %{ $c->components }"
 sub _comp_prefixes {
-    my ($c, $name, @prefixes) = @_;
+    my ( $c, $name, @prefixes ) = @_;
 
     my $appclass = ref $c || $c;
 
@@ -399,7 +418,146 @@ sub _comp_prefixes {
     return $comp;
 }
 
-=head2 Component Accessors
+# Find possible names for a prefix 
+
+sub _comp_names {
+    my ( $c, @prefixes ) = @_;
+
+    my $appclass = ref $c || $c;
+
+    my @pre = map { "${appclass}::${_}::" } @prefixes;
+
+    my @names;
+
+    COMPONENT: foreach my $comp ($c->component) {
+        foreach my $p (@pre) {
+            if ($comp =~ s/^$p//) {
+                push(@names, $comp);
+                next COMPONENT;
+            }
+        }
+    }
+
+    return @names;
+}
+
+# Return a component if only one matches.
+sub _comp_singular {
+    my ( $c, @prefixes ) = @_;
+
+    my $appclass = ref $c || $c;
+
+    my ( $comp, $rest ) =
+      map { $c->_comp_search("^${appclass}::${_}::") } @prefixes;
+    return $comp unless $rest;
+}
+
+# Filter a component before returning by calling ACCEPT_CONTEXT if available
+sub _filter_component {
+    my ( $c, $comp, @args ) = @_;
+    if ( eval { $comp->can('ACCEPT_CONTEXT'); } ) {
+        return $comp->ACCEPT_CONTEXT( $c, @args );
+    }
+    else { return $comp }
+}
+
+=head2 COMPONENT ACCESSORS
+
+=head2 $c->controller($name)
+
+Gets a L<Catalyst::Controller> instance by name.
+
+    $c->controller('Foo')->do_stuff;
+
+If name is omitted, will return the controller for the dispatched action.
+
+=cut
+
+sub controller {
+    my ( $c, $name, @args ) = @_;
+    return $c->_filter_component( $c->_comp_prefixes( $name, qw/Controller C/ ),
+        @args )
+      if ($name);
+    return $c->component( $c->action->class );
+}
+
+=head2 $c->model($name)
+
+Gets a L<Catalyst::Model> instance by name.
+
+    $c->model('Foo')->do_stuff;
+
+If the name is omitted, it will look for a config setting 'default_model',
+or check if there is only one model, and forward to it if that's the case.
+
+=cut
+
+sub model {
+    my ( $c, $name, @args ) = @_;
+    return $c->_filter_component( $c->_comp_prefixes( $name, qw/Model M/ ),
+        @args )
+      if $name;
+    return $c->component( $c->config->{default_model} )
+      if $c->config->{default_model};
+    return $c->_filter_component( $c->_comp_singular(qw/Model M/), @args );
+
+}
+
+=head2 $c->controllers
+
+Returns the available names which can be passed to $c->controller
+
+=cut
+
+sub controllers {
+    my ( $c ) = @_;
+    return $c->_comp_names(qw/Controller C/);
+}
+
+
+=head2 $c->view($name)
+
+Gets a L<Catalyst::View> instance by name.
+
+    $c->view('Foo')->do_stuff;
+
+If the name is omitted, it will look for a config setting 'default_view',
+or check if there is only one view, and forward to it if that's the case.
+
+=cut
+
+sub view {
+    my ( $c, $name, @args ) = @_;
+    return $c->_filter_component( $c->_comp_prefixes( $name, qw/View V/ ),
+        @args )
+      if $name;
+    return $c->component( $c->config->{default_view} )
+      if $c->config->{default_view};
+    return $c->_filter_component( $c->_comp_singular(qw/View V/) );
+}
+
+=head2 $c->models
+
+Returns the available names which can be passed to $c->model
+
+=cut
+
+sub models {
+    my ( $c ) = @_;
+    return $c->_comp_names(qw/Model M/);
+}
+
+
+=head2 $c->views
+
+Returns the available names which can be passed to $c->view
+
+=cut
+
+sub views {
+    my ( $c ) = @_;
+    return $c->_comp_names(qw/View V/);
+}
 
 =head2 $c->comp($name)
 
@@ -428,55 +586,18 @@ sub component {
         );
 
         my $comp = $c->_comp_explicit(@names);
-        return $comp if defined($comp);
+        return $c->_filter_component( $comp, @_ ) if defined($comp);
 
         $comp = $c->_comp_search($name);
-        return $comp if defined($comp);
+        return $c->_filter_component( $comp, @_ ) if defined($comp);
     }
 
     return sort keys %{ $c->components };
 }
 
-=head2 $c->controller($name)
 
-Gets a L<Catalyst::Controller> instance by name.
 
-    $c->controller('Foo')->do_stuff;
-
-=cut
-
-sub controller {
-    my ( $c, $name ) = @_;
-    return $c->_comp_prefixes($name, qw/Controller C/);
-}
-
-=head2 $c->model($name)
-
-Gets a L<Catalyst::Model> instance by name.
-
-    $c->model('Foo')->do_stuff;
-
-=cut
-
-sub model {
-    my ( $c, $name ) = @_;
-    return $c->_comp_prefixes($name, qw/Model M/);
-}
-
-=head2 $c->view($name)
-
-Gets a L<Catalyst::View> instance by name.
-
-    $c->view('Foo')->do_stuff;
-
-=cut
-
-sub view {
-    my ( $c, $name ) = @_;
-    return $c->_comp_prefixes($name, qw/View V/);
-}
-
-=head2 Class data and helper classes
+=head2 CLASS DATA AND HELPER CLASSES
 
 =head2 $c->config
 
@@ -490,6 +611,7 @@ applications home directory.
     ---
     db: dsn:SQLite:foo.db
 
+
 =cut
 
 sub config {
@@ -500,6 +622,24 @@ sub config {
 
     $c->NEXT::config(@_);
 }
+
+=head2 $c->log
+
+Returns the logging object instance. Unless it is already set, Catalyst sets
+this up with a L<Catalyst::Log> object. To use your own log class, set the
+logger with the C<< __PACKAGE__->log >> method prior to calling
+C<< __PACKAGE__->setup >>.
+
+ __PACKAGE__->log( MyLogger->new );
+ __PACKAGE__->setup;
+
+And later:
+
+    $c->log->info( 'Now logging with my own logger!' );
+
+Your log class should implement the methods described in the
+L<Catalyst::Log> man page.
+
 
 =head2 $c->debug
 
@@ -519,26 +659,8 @@ L<Catalyst::Dispatcher>.
 Returns the engine instance. Stringifies to the class name. See
 L<Catalyst::Engine>.
 
-=head2 $c->log
 
-Returns the logging object instance. Unless it is already set, Catalyst sets
-this up with a L<Catalyst::Log> object. To use your own log class, set the
-logger with the C<< __PACKAGE__->log >> method prior to calling
-C<< __PACKAGE__->setup >>.
-
- __PACKAGE__->log( MyLogger->new );
- __PACKAGE__->setup;
-
-And later:
-
-    $c->log->info( 'Now logging with my own logger!' );
-
-Your log class should implement the methods described in the
-L<Catalyst::Log> man page.
-
-=cut
-
-=head2 Utility methods
+=head2 UTILITY METHODS
 
 =head2 $c->path_to(@path)
 
@@ -553,9 +675,9 @@ For example:
 
 sub path_to {
     my ( $c, @path ) = @_;
-    my $path = dir( $c->config->{home}, @path );
+    my $path = Path::Class::Dir->new( $c->config->{home}, @path );
     if ( -d $path ) { return $path }
-    else { return file( $c->config->{home}, @path ) }
+    else { return Path::Class::File->new( $c->config->{home}, @path ) }
 }
 
 =head2 $c->plugin( $name, $class, @args )
@@ -725,7 +847,7 @@ EOF
     $class->setup_finished(1);
 }
 
-=head2 $c->uri_for( $path, [ @args ] )
+=head2 $c->uri_for( $path, @args?, \%query_values? )
 
 Merges path with C<$c-E<gt>request-E<gt>base> for absolute uri's and
 with C<$c-E<gt>namespace> for relative uri's, then returns a
@@ -754,6 +876,14 @@ sub uri_for {
     my $params =
       ( scalar @args && ref $args[$#args] eq 'HASH' ? pop @args : {} );
 
+    for my $value ( values %$params ) {
+        my $isa_ref = ref $value;
+        if( $isa_ref and $isa_ref ne 'ARRAY' ) {
+            croak( "Non-array reference ($isa_ref) passed to uri_for()" );
+        }
+        utf8::encode( $_ ) for $isa_ref ? @$value : $value;
+    };
+    
     # join args with '/', or a blank string
     my $args = ( scalar @args ? '/' . join( '/', @args ) : '' );
     $args =~ s/^\/// unless $path;
@@ -971,103 +1101,24 @@ sub execute {
     $class = $c->component($class) || $class;
     $c->state(0);
 
-    if ( $c->debug ) {
+    if ( $c->depth >= $RECURSION ) {
         my $action = "$code";
         $action = "/$action" unless $action =~ /\-\>/;
-        $c->counter->{"$code"}++;
-
-        if ( $c->counter->{"$code"} > $RECURSION ) {
-            my $error = qq/Deep recursion detected in "$action"/;
-            $c->log->error($error);
-            $c->error($error);
-            $c->state(0);
-            return $c->state;
-        }
-
-        # determine if the call was the result of a forward
-        # this is done by walking up the call stack and looking for a calling
-        # sub of Catalyst::forward before the eval
-        my $callsub = q{};
-        for my $index ( 1 .. 10 ) {
-            last
-              if ( ( caller($index) )[0] eq 'Catalyst'
-                && ( caller($index) )[3] eq '(eval)' );
-
-            if ( ( caller($index) )[3] =~ /forward$/ ) {
-                $callsub = ( caller($index) )[3];
-                $action  = "-> $action";
-                last;
-            }
-        }
-
-        my $node = Tree::Simple->new(
-            {
-                action  => $action,
-                elapsed => undef,     # to be filled in later
-            }
-        );
-        $node->setUID( "$code" . $c->counter->{"$code"} );
-
-        unless ( ( $code->name =~ /^_.*/ )
-            && ( !$c->config->{show_internal_actions} ) )
-        {
-
-            # is this a root-level call or a forwarded call?
-            if ( $callsub =~ /forward$/ ) {
-
-                # forward, locate the caller
-                if ( my $parent = $c->stack->[-1] ) {
-                    my $visitor = Tree::Simple::Visitor::FindByUID->new;
-                    $visitor->searchForUID(
-                        "$parent" . $c->counter->{"$parent"} );
-                    $c->{stats}->accept($visitor);
-                    if ( my $result = $visitor->getResult ) {
-                        $result->addChild($node);
-                    }
-                }
-                else {
-
-                    # forward with no caller may come from a plugin
-                    $c->{stats}->addChild($node);
-                }
-            }
-            else {
-
-                # root-level call
-                $c->{stats}->addChild($node);
-            }
-        }
+        my $error = qq/Deep recursion detected calling "$action"/;
+        $c->log->error($error);
+        $c->error($error);
+        $c->state(0);
+        return $c->state;
     }
+
+    my $stats_info = $c->_stats_start_execute( $code );
 
     push( @{ $c->stack }, $code );
-    my $elapsed = 0;
-    my $start   = 0;
-    $start = [gettimeofday] if $c->debug;
+    
     eval { $c->state( &$code( $class, $c, @{ $c->req->args } ) || 0 ) };
-    $elapsed = tv_interval($start) if $c->debug;
 
-    if ( $c->debug ) {
-        unless ( ( $code->name =~ /^_.*/ )
-            && ( !$c->config->{show_internal_actions} ) )
-        {
-
-            # FindByUID uses an internal die, so we save the existing error
-            my $error = $@;
-
-            # locate the node in the tree and update the elapsed time
-            my $visitor = Tree::Simple::Visitor::FindByUID->new;
-            $visitor->searchForUID( "$code" . $c->counter->{"$code"} );
-            $c->{stats}->accept($visitor);
-            if ( my $result = $visitor->getResult ) {
-                my $value = $result->getNodeValue;
-                $value->{elapsed} = sprintf( '%fs', $elapsed );
-                $result->setNodeValue($value);
-            }
-
-            # restore error
-            $@ = $error || undef;
-        }
-    }
+    $c->_stats_finish_execute( $stats_info );
+    
     my $last = ${ $c->stack }[-1];
     pop( @{ $c->stack } );
 
@@ -1087,6 +1138,127 @@ sub execute {
     return $c->state;
 }
 
+sub _stats_start_execute {
+    my ( $c, $code ) = @_;
+
+    return unless $c->debug;
+
+    my $action = "$code";
+
+    $action = "/$action" unless $action =~ /\-\>/;
+    $c->counter->{"$code"}++;
+
+    # determine if the call was the result of a forward
+    # this is done by walking up the call stack and looking for a calling
+    # sub of Catalyst::forward before the eval
+    my $callsub = q{};
+    for my $index ( 2 .. 11 ) {
+        last
+        if ( ( caller($index) )[0] eq 'Catalyst'
+            && ( caller($index) )[3] eq '(eval)' );
+
+        if ( ( caller($index) )[3] =~ /forward$/ ) {
+            $callsub = ( caller($index) )[3];
+            $action  = "-> $action";
+            last;
+        }
+    }
+
+    my $node = Tree::Simple->new(
+        {
+            action  => $action,
+            elapsed => undef,     # to be filled in later
+            comment => "",
+        }
+    );
+    $node->setUID( "$code" . $c->counter->{"$code"} );
+
+    unless ( ( $code->name =~ /^_.*/ )
+        && ( !$c->config->{show_internal_actions} ) )
+    {
+        # is this a root-level call or a forwarded call?
+        if ( $callsub =~ /forward$/ ) {
+
+            # forward, locate the caller
+            if ( my $parent = $c->stack->[-1] ) {
+                my $visitor = Tree::Simple::Visitor::FindByUID->new;
+                $visitor->searchForUID(
+                    "$parent" . $c->counter->{"$parent"} );
+                $c->stats->accept($visitor);
+                if ( my $result = $visitor->getResult ) {
+                    $result->addChild($node);
+                }
+            }
+            else {
+
+                # forward with no caller may come from a plugin
+                $c->stats->addChild($node);
+            }
+        }
+        else {
+
+            # root-level call
+            $c->stats->addChild($node);
+        }
+    }
+
+    my $start = [gettimeofday];
+    my $elapsed = tv_interval($start);
+
+    return {
+        code    => $code,
+        elapsed => $elapsed,
+        start   => $start,
+        node    => $node,
+      }
+}
+
+sub _stats_finish_execute {
+    my ( $c, $info ) = @_;
+
+    return unless $c->debug;
+
+    my ( $code, $start, $elapsed ) = @{ $info }{qw/code start elapsed/};
+
+    unless ( ( $code->name =~ /^_.*/ )
+        && ( !$c->config->{show_internal_actions} ) )
+    {
+
+        # FindByUID uses an internal die, so we save the existing error
+        my $error = $@;
+
+        # locate the node in the tree and update the elapsed time
+        my $visitor = Tree::Simple::Visitor::FindByUID->new;
+        $visitor->searchForUID( "$code" . $c->counter->{"$code"} );
+        $c->stats->accept($visitor);
+        if ( my $result = $visitor->getResult ) {
+            my $value = $result->getNodeValue;
+            $value->{elapsed} = sprintf( '%fs', $elapsed );
+            $result->setNodeValue($value);
+        }
+
+        # restore error
+        $@ = $error || undef;
+    }
+}
+
+=head2 $c->_localize_fields( sub { }, \%keys );
+
+=cut
+
+sub _localize_fields {
+    my ( $c, $localized, $code ) = ( @_ );
+
+    my $request = delete $localized->{request} || {};
+    my $response = delete $localized->{response} || {};
+    
+    local @{ $c }{ keys %$localized } = values %$localized;
+    local @{ $c->request }{ keys %$request } = values %$request;
+    local @{ $c->response }{ keys %$response } = values %$response;
+
+    $code->();
+}
+
 =head2 $c->finalize
 
 Finalizes the request.
@@ -1100,21 +1272,28 @@ sub finalize {
         $c->log->error($error);
     }
 
-    $c->finalize_uploads;
-
-    # Error
-    if ( $#{ $c->error } >= 0 ) {
-        $c->finalize_error;
+    # Allow engine to handle finalize flow (for POE)
+    if ( $c->engine->can('finalize') ) {
+        $c->engine->finalize( $c );
     }
+    else {
 
-    $c->finalize_headers;
+        $c->finalize_uploads;
 
-    # HEAD request
-    if ( $c->request->method eq 'HEAD' ) {
-        $c->response->body('');
+        # Error
+        if ( $#{ $c->error } >= 0 ) {
+            $c->finalize_error;
+        }
+
+        $c->finalize_headers;
+
+        # HEAD request
+        if ( $c->request->method eq 'HEAD' ) {
+            $c->response->body('');
+        }
+
+        $c->finalize_body;
     }
-
-    $c->finalize_body;
 
     return $c->response->status;
 }
@@ -1165,7 +1344,8 @@ sub finalize_headers {
     if ( $c->response->body && !$c->response->content_length ) {
 
         # get the length from a filehandle
-        if ( blessed($c->response->body) && $c->response->body->can('read') ) {
+        if ( blessed( $c->response->body ) && $c->response->body->can('read') )
+        {
             if ( my $stat = stat $c->response->body ) {
                 $c->response->content_length( $stat->size );
             }
@@ -1229,7 +1409,7 @@ namespaces.
 
 sub get_actions { my $c = shift; $c->dispatcher->get_actions( $c, @_ ) }
 
-=head2 handle_request( $class, @arguments )
+=head2 $c->handle_request( $class, @arguments )
 
 Called to handle each HTTP request.
 
@@ -1245,7 +1425,7 @@ sub handle_request {
 
         my $handler = sub {
             my $c = $class->prepare(@arguments);
-            $c->{stats} = $stats;
+            $c->stats($stats);
             $c->dispatch;
             return $c->finalize;
         };
@@ -1263,7 +1443,7 @@ sub handle_request {
                 sub {
                     my $action = shift;
                     my $stat   = $action->getNodeValue;
-                    $t->row( ( q{ } x $action->getDepth ) . $stat->{action},
+                    $t->row( ( q{ } x $action->getDepth ) . $stat->{action} . $stat->{comment},
                         $stat->{elapsed} || '??' );
                 }
             );
@@ -1341,15 +1521,21 @@ sub prepare {
         $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION );
     }
 
-    $c->prepare_request(@arguments);
-    $c->prepare_connection;
-    $c->prepare_query_parameters;
-    $c->prepare_headers;
-    $c->prepare_cookies;
-    $c->prepare_path;
+    # Allow engine to direct the prepare flow (for POE)
+    if ( $c->engine->can('prepare') ) {
+        $c->engine->prepare( $c, @arguments );
+    }
+    else {
+        $c->prepare_request(@arguments);
+        $c->prepare_connection;
+        $c->prepare_query_parameters;
+        $c->prepare_headers;
+        $c->prepare_cookies;
+        $c->prepare_path;
 
-    # On-demand parsing
-    $c->prepare_body unless $c->config->{parse_on_demand};
+        # On-demand parsing
+        $c->prepare_body unless $c->config->{parse_on_demand};
+    }
 
     my $method  = $c->req->method  || '';
     my $path    = $c->req->path    || '';
@@ -1365,7 +1551,7 @@ sub prepare {
 
 =head2 $c->prepare_action
 
-Prepares action.
+Prepares action. See L<Catalyst::Dispatcher>.
 
 =cut
 
@@ -1403,6 +1589,8 @@ sub prepare_body {
 =head2 $c->prepare_body_chunk( $chunk )
 
 Prepares a chunk of data before sending it to L<HTTP::Body>.
+
+See L<Catalyst::Engine>.
 
 =cut
 
@@ -1839,7 +2027,7 @@ sub setup_home {
 
     if ($home) {
         $class->config->{home} ||= $home;
-        $class->config->{root} ||= dir($home)->subdir('root');
+        $class->config->{root} ||= Path::Class::Dir->new($home)->subdir('root');
     }
 }
 
@@ -1895,7 +2083,7 @@ the plugin name does not begin with C<Catalyst::Plugin::>.
 
     sub registered_plugins {
         my $proto = shift;
-        return sort keys %{$proto->_plugins} unless @_;
+        return sort keys %{ $proto->_plugins } unless @_;
         my $plugin = shift;
         return 1 if exists $proto->_plugins->{$plugin};
         return exists $proto->_plugins->{"Catalyst::Plugin::$plugin"};
@@ -1913,7 +2101,7 @@ the plugin name does not begin with C<Catalyst::Plugin::>.
                 message => qq/Couldn't load ${type}plugin "$plugin", $error/ );
         }
 
-        $proto->_plugins->{$plugin} = 1;        
+        $proto->_plugins->{$plugin} = 1;
         unless ($instant) {
             no strict 'refs';
             unshift @{"$class\::ISA"}, $plugin;
@@ -1939,7 +2127,8 @@ the plugin name does not begin with C<Catalyst::Plugin::>.
 
 =head2 $c->stack
 
-Returns the stack.
+Returns an arrayref of the internal execution stack (actions that are currently
+executing).
 
 =head2 $c->write( $data )
 

@@ -30,9 +30,6 @@ See L<Catalyst>.
 
 =head1 METHODS
 
-=head2 $self->finalize_output
-
-<obsolete>, see finalize_body
 
 =head2 $self->finalize_body($c)
 
@@ -42,19 +39,22 @@ Finalize body.  Prints the response output.
 
 sub finalize_body {
     my ( $self, $c ) = @_;
-    if ( ref $c->response->body && $c->response->body->can('read') ) {
-        while ( !$c->response->body->eof() ) {
-            $c->response->body->read( my $buffer, $CHUNKSIZE );
+    my $body = $c->response->body;
+    if ( ref $body && ($body->can('read') || ref($body) eq 'GLOB') ) {
+        while ( !eof $body ) {
+            read $body, my ($buffer), $CHUNKSIZE;
             last unless $self->write( $c, $buffer );
         }
-        $c->response->body->close();
+        close $body;
     }
     else {
-        $self->write( $c, $c->response->body );
+        $self->write( $c, $body );
     }
 }
 
 =head2 $self->finalize_cookies($c)
+
+Create CGI::Cookies from $c->res->cookies, and set them as response headers.
 
 =cut
 
@@ -82,6 +82,10 @@ sub finalize_cookies {
 }
 
 =head2 $self->finalize_error($c)
+
+Output an apropriate error message, called if there's an error in $c
+after the dispatch has finished. Will output debug messages if Catalyst
+is in debug mode, or a `please come back later` message otherwise.
 
 =cut
 
@@ -263,6 +267,8 @@ EOF
 
 =head2 $self->finalize_headers($c)
 
+Abstract method, allows engines to write headers to response
+
 =cut
 
 sub finalize_headers { }
@@ -278,6 +284,8 @@ sub finalize_read {
 }
 
 =head2 $self->finalize_uploads($c)
+
+Clean up after uploads, deleting temp files.
 
 =cut
 
@@ -296,6 +304,8 @@ sub finalize_uploads {
 
 =head2 $self->prepare_body($c)
 
+sets up the L<Catalyst::Request> object body using L<HTTP::Body>
+
 =cut
 
 sub prepare_body {
@@ -306,6 +316,7 @@ sub prepare_body {
 
     unless ( $c->request->{_body} ) {
         $c->request->{_body} = HTTP::Body->new( $type, $self->read_length );
+        $c->request->{_body}->{tmpdir} = $c->config->{uploadtmp} if exists $c->config->{uploadtmp};
     }
 
     if ( $self->read_length > 0 ) {
@@ -324,6 +335,8 @@ sub prepare_body {
 
 =head2 $self->prepare_body_chunk($c)
 
+Add a chunk to the request body.
+
 =cut
 
 sub prepare_body_chunk {
@@ -334,6 +347,8 @@ sub prepare_body_chunk {
 
 =head2 $self->prepare_body_parameters($c)
 
+Sets up parameters from body. 
+
 =cut
 
 sub prepare_body_parameters {
@@ -343,11 +358,15 @@ sub prepare_body_parameters {
 
 =head2 $self->prepare_connection($c)
 
+Abstract method implemented in engines.
+
 =cut
 
 sub prepare_connection { }
 
 =head2 $self->prepare_cookies($c)
+
+Parse cookies from header. Sets a L<CGI::Cookie> object.
 
 =cut
 
@@ -366,6 +385,8 @@ sub prepare_cookies {
 sub prepare_headers { }
 
 =head2 $self->prepare_parameters($c)
+
+sets up parameters from query and post parameters.
 
 =cut
 
@@ -394,6 +415,8 @@ sub prepare_parameters {
 
 =head2 $self->prepare_path($c)
 
+abstract method, implemented by engines.
+
 =cut
 
 sub prepare_path { }
@@ -401,6 +424,8 @@ sub prepare_path { }
 =head2 $self->prepare_request($c)
 
 =head2 $self->prepare_query_parameters($c)
+
+process the query string and extract query parameters.
 
 =cut
 
@@ -420,6 +445,8 @@ sub prepare_query_parameters {
 
 =head2 $self->prepare_read($c)
 
+prepare to read from the engine.
+
 =cut
 
 sub prepare_read {
@@ -430,6 +457,8 @@ sub prepare_read {
 }
 
 =head2 $self->prepare_request(@arguments)
+
+Populate the context object from the request object.
 
 =cut
 
@@ -465,6 +494,8 @@ sub prepare_uploads {
 }
 
 =head2 $self->prepare_write($c)
+
+Abstract method. Implemented by the engines.
 
 =cut
 
@@ -523,11 +554,15 @@ The amount of input data that has already been read.
 
 =head2 $self->run($c)
 
+Start the engine. Implemented by the various engine classes.
+
 =cut
 
 sub run { }
 
 =head2 $self->write($c, $buffer)
+
+Writes the buffer to the client. Can only be called once for a request.
 
 =cut
 
@@ -541,6 +576,10 @@ sub write {
 
     print STDOUT $buffer;
 }
+
+=head2 $self->finalize_output
+
+<obsolete>, see finalize_body
 
 =head1 AUTHORS
 
