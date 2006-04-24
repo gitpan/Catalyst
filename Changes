@@ -1,14 +1,10 @@
 This file documents the revision history for Perl extension Catalyst.
 
-5.70_01	2005-04-23 20:39:49
-        - Updated log format
-        - Removed rounded corners from built in screens
-        - ConfigLoader: Updated to version 0.05
-        - Propagate errors from Catalyst::Test
-        - Removed Catalyst::Build (was deprecated for months)
-        - Split Catalyst and Catalyst::Helper
-        - Added the Action() and MyAction() attribute
-	- Added $c->req->uri_with() helper
+5.678   2006-04-24 12:30:00
+        - Re-release of 5.67 without OSX metadata files.
+
+5.67    2006-04-23 08:50:00
+        - Added $c->req->uri_with() helper
         - ConfigLoader: Updated to version 0.05
         - Fix up Engine to avoid a new 5.8.8 warning
         - Added app name with :: support for PAR
@@ -16,7 +12,7 @@ This file documents the revision history for Perl extension Catalyst.
         - Static::Simple: Unescape the URI path before looking for the file.
           This fixes issues with files that have spaces.
         - Looping and recursion tests plus a fix
-        - Added lots of API documentation.
+        - Added lots of API documentation. Refactored main pod.
         - Changed default behaviors for $c->model/$c->controller/$c->view
           to more sane settings.
         - added the clear_errors method - an alias for error(0)

@@ -76,7 +76,7 @@ sub import {
 
     else {
         $class->require;
-        die $@ if $@;
+        die if $@ && $@ !~ /^Can't locate /;
         $class->import;
 
         $request = sub { local_request( $class, @_ ) };

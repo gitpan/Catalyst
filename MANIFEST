@@ -16,11 +16,11 @@ lib/Catalyst/Action.pm
 lib/Catalyst/ActionContainer.pm
 lib/Catalyst/AttrContainer.pm
 lib/Catalyst/Base.pm
+lib/Catalyst/Build.pm
 lib/Catalyst/Component.pm
 lib/Catalyst/Controller.pm
 lib/Catalyst/Dispatcher.pm
 lib/Catalyst/DispatchType.pm
-lib/Catalyst/DispatchType/Action.pm
 lib/Catalyst/DispatchType/Default.pm
 lib/Catalyst/DispatchType/Index.pm
 lib/Catalyst/DispatchType/Path.pm
@@ -32,6 +32,7 @@ lib/Catalyst/Engine/HTTP.pm
 lib/Catalyst/Engine/HTTP/Restarter.pm
 lib/Catalyst/Engine/HTTP/Restarter/Watcher.pm
 lib/Catalyst/Exception.pm
+lib/Catalyst/Helper.pm
 lib/Catalyst/Log.pm
 lib/Catalyst/Manual.pod
 lib/Catalyst/Manual/About.pod
@@ -52,6 +53,7 @@ lib/Catalyst/Response.pm
 lib/Catalyst/Test.pm
 lib/Catalyst/Utils.pm
 lib/Catalyst/View.pm
+lib/Module/Install/Catalyst.pm
 Makefile.PL
 MANIFEST			This list of files
 META.yml
@@ -61,15 +63,11 @@ t/02pod.t
 t/03podcoverage.t
 t/catalyst_130pix.gif
 t/conf/extra.conf.in
-t/lib/Catalyst/Action/TestAfter.pm
-t/lib/Catalyst/Action/TestBefore.pm
 t/lib/Catalyst/Plugin/Test/Errors.pm
 t/lib/Catalyst/Plugin/Test/Headers.pm
 t/lib/Catalyst/Plugin/Test/Plugin.pm
-t/lib/PluginTestApp.pm
 t/lib/TestApp.pm
 t/lib/TestApp/Controller/Action.pm
-t/lib/TestApp/Controller/Action/Action.pm
 t/lib/TestApp/Controller/Action/Auto.pm
 t/lib/TestApp/Controller/Action/Auto/Abort.pm
 t/lib/TestApp/Controller/Action/Auto/Deep.pm
@@ -104,7 +102,6 @@ t/lib/TestApp/View/Dump.pm
 t/lib/TestApp/View/Dump/Parameters.pm
 t/lib/TestApp/View/Dump/Request.pm
 t/lib/TestApp/View/Dump/Response.pm
-t/live_component_controller_action_action.t
 t/live_component_controller_action_auto.t
 t/live_component_controller_action_begin.t
 t/live_component_controller_action_default.t

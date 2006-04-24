@@ -40,7 +40,7 @@ Finalize body.  Prints the response output.
 sub finalize_body {
     my ( $self, $c ) = @_;
     my $body = $c->response->body;
-    if ( ref $body && ( $body->can('read') || ref($body) eq 'GLOB' ) ) {
+    if ( ref $body && ($body->can('read') || ref($body) eq 'GLOB') ) {
         while ( !eof $body ) {
             read $body, my ($buffer), $CHUNKSIZE;
             last unless $self->write( $c, $buffer );
@@ -193,6 +193,7 @@ EOF
             border: 1px solid #aaa;
             padding: 4px;
             margin: 10px;
+            -moz-border-radius: 10px;
         }
         div.error {
             background-color: #977;
@@ -200,6 +201,7 @@ EOF
             padding: 8px;
             margin: 4px;
             margin-bottom: 10px;
+            -moz-border-radius: 10px;
         }
         div.infos {
             background-color: #797;
@@ -207,12 +209,14 @@ EOF
             padding: 8px;
             margin: 4px;
             margin-bottom: 10px;
+            -moz-border-radius: 10px;
         }
         div.name {
             background-color: #779;
             border: 1px solid #557;
             padding: 8px;
             margin: 4px;
+            -moz-border-radius: 10px;
         }
         code.error {
             display: block;
@@ -312,8 +316,7 @@ sub prepare_body {
 
     unless ( $c->request->{_body} ) {
         $c->request->{_body} = HTTP::Body->new( $type, $self->read_length );
-        $c->request->{_body}->{tmpdir} = $c->config->{uploadtmp}
-          if exists $c->config->{uploadtmp};
+        $c->request->{_body}->{tmpdir} = $c->config->{uploadtmp} if exists $c->config->{uploadtmp};
     }
 
     if ( $self->read_length > 0 ) {
@@ -323,10 +326,9 @@ sub prepare_body {
 
         # paranoia against wrong Content-Length header
         my $remaining = $self->read_length - $self->read_position;
-        if ( $remaining > 0 ) {
+        if ($remaining > 0) {
             $self->finalize_read($c);
-            Catalyst::Exception->throw(
-                "Wrong Content-Length value: " . $self->read_length );
+            Catalyst::Exception->throw("Wrong Content-Length value: ". $self->read_length);
         }
     }
 }
