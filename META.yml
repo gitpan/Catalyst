@@ -25,13 +25,11 @@ requires:
   HTTP::Response: 0
   LWP::UserAgent: 0
   MIME::Types: 0
-  Module::Install: 0.54
-  Module::Install::Admin: 0.54
   Module::Pluggable::Fast: 0.16
+  Moose: 0.03
   NEXT: 0
   Path::Class: 0.09
   Scalar::Util: 0
-  Template: 0
   Test::MockObject: 0
   Test::NoWarnings: 0.082
   Text::SimpleTable: 0.03
@@ -42,4 +40,4 @@ requires:
   URI: 1.35
   YAML: 0.55
   perl: 5.8.1
-version: 5.67
+version: 5.70_01

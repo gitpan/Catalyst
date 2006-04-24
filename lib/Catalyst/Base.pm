@@ -27,7 +27,7 @@ sub _BEGIN : Private {
     my ( $self, $c ) = @_;
     my $begin = ( $c->get_actions( 'begin', $c->namespace ) )[-1];
     return 1 unless $begin;
-    $begin->execute($c);
+    $begin->execute( $c->comp( $begin->class ), $c, @{ $c->req->args } );
     return !@{ $c->error };
 }
 
@@ -35,7 +35,7 @@ sub _AUTO : Private {
     my ( $self, $c ) = @_;
     my @auto = $c->get_actions( 'auto', $c->namespace );
     foreach my $auto (@auto) {
-        $auto->execute($c);
+        $auto->execute( $c->comp( $auto->class ), $c, @{ $c->req->args } );
         return 0 unless $c->state;
     }
     return 1;
@@ -47,7 +47,8 @@ sub _ACTION : Private {
         && $c->action->can('execute')
         && $c->req->action )
     {
-        $c->action->execute($c);
+        $c->action->execute( $c->comp( $c->action->class ),
+            $c, @{ $c->req->args } );
     }
     return !@{ $c->error };
 }
@@ -56,7 +57,7 @@ sub _END : Private {
     my ( $self, $c ) = @_;
     my $end = ( $c->get_actions( 'end', $c->namespace ) )[-1];
     return 1 unless $end;
-    $end->execute($c);
+    $end->execute( $c->comp( $end->class ), $c, @{ $c->req->args } );
     return !@{ $c->error };
 }
 
@@ -128,30 +129,50 @@ sub register_actions {
         my $method = $methods{$code};
         next unless $method;
         my $attrs = $self->_parse_attrs( $c, $method, @{ $cache->[1] } );
-        if ( $attrs->{Private} && ( keys %$attrs > 1 ) ) {
-            $c->log->debug( 'Bad action definition "'
-                  . join( ' ', @{ $cache->[1] } )
-                  . qq/" for "$class->$method"/ )
-              if $c->debug;
-            next;
+        my $action_attrs    = $attrs->{Action}   ? $attrs->{Action}   : [];
+        my $my_action_attrs = $attrs->{MyAction} ? $attrs->{MyAction} : [];
+        my $appclass = Catalyst::Utils::class2appclass($class);
+        for my $my_action (@$my_action_attrs) {
+            push @$action_attrs, "+$appclass\::Action::$my_action";
         }
+        my $proxy = Catalyst::Utils::controller2action( $class, $method );
+        my $base_class = $self->_action_class;
+        eval <<"EOF";
+package $proxy;
+use Moose;
+extends '$base_class';
+EOF
+        my @action_classes;
+
+        for my $attr (@$action_attrs) {
+            next unless $attr;
+            if ( $attr =~ /^\+/ ) { $attr =~ s/^\+// }
+            else { $attr = "Catalyst::Action::$attr" }
+            eval "require $attr";
+            Catalyst::Exception->throw( message => qq/Couldn't load "$class"/ )
+              if $@;
+            eval <<"EOF";
+package $proxy;
+with '$attr';
+EOF
+            push @action_classes, $attr;
+        }
+        $attrs->{Action} = \@action_classes;
+
         my $reverse = $namespace ? "$namespace/$method" : $method;
-        my $action = $self->create_action(
-            name       => $method,
-            code       => $code,
-            reverse    => $reverse,
-            namespace  => $namespace,
-            class      => $class,
-            attributes => $attrs,
+        my $action = $proxy->new(
+            {
+                name       => $method,
+                code       => $code,
+                reverse    => $reverse,
+                namespace  => $namespace,
+                class      => $class,
+                attributes => $attrs,
+            }
         );
 
         $c->dispatcher->register( $c, $action );
     }
-}
-
-sub create_action {
-    my $self = shift;
-    $self->_action_class->new( { @_ } );
 }
 
 sub _parse_attrs {

@@ -140,6 +140,25 @@ sub class2tempdir {
     return $tmpdir->stringify;
 }
 
+=head2 controller2action( $class, $method )
+
+Returns the action class for given controller class and method.
+
+    MyApp::Controller::Foo, bar becomes MyApp::Action::Foo::bar
+
+=cut
+
+sub controller2action {
+    my ( $class, $method ) = @_;
+    if ( $class =~ /::(?:C|Controller)::/ ) {
+        my $appclass = class2appclass($class);
+        my $suffix   = class2classsuffix($class);
+        $suffix =~ s/^.*:://;
+        return "$appclass\::Action\::$suffix\::$method";
+    }
+    else { return "$class\::Action\::$method" }
+}
+
 =head2 home($class)
 
 Returns home directory for given class.

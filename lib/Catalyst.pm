@@ -50,7 +50,7 @@ our $DETACH    = "catalyst_detach\n";
 require Module::Pluggable::Fast;
 
 # Helper script generation
-our $CATALYST_SCRIPT_GEN = 27;
+our $CATALYST_SCRIPT_GEN = 30;
 
 __PACKAGE__->mk_classdata($_)
   for qw/components arguments dispatcher engine log dispatcher_class
@@ -61,7 +61,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.67';
+our $VERSION = '5.70_01';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -87,7 +87,7 @@ Catalyst - The Elegant MVC Web Application Framework
 
 =head1 SYNOPSIS
 
-    # use the helper to create a new application
+    # use the helper to start a new application
     catalyst.pl MyApp
 
     # add models, views, controllers
@@ -101,16 +101,15 @@ Catalyst - The Elegant MVC Web Application Framework
     # command line testing interface
     script/myapp_test.pl /yada
 
-    ### in lib/MyApp.pm
+    ### in MyApp.pm
     use Catalyst qw/-Debug/; # include plugins here as well
     
-	### In libMyApp/Controller/Root.pm (autocreated)
     sub foo : Global { # called for /foo, /foo/1, /foo/1/2, etc.
         my ( $self, $c, @args ) = @_; # args are qw/1 2/ for /foo/1/2
         $c->stash->{template} = 'foo.tt'; # set the template
         # lookup something from db -- stash vars are passed to TT
         $c->stash->{data} = 
-          $c->model('Database::Foo')->search( { country => $args[0] } );
+          MyApp::Model::Database::Foo->search( { country => $args[0] } );
         if ( $c->req->params->{bar} ) { # access GET or POST parameters
             $c->forward( 'bar' ); # process another action
             # do something else after forward returns            
@@ -128,7 +127,7 @@ Catalyst - The Elegant MVC Web Application Framework
     # called for all actions, from the top-most controller downwards
     sub auto : Private { 
         my ( $self, $c ) = @_;
-        if ( !$c->user_exists ) { # Catalyst::Plugin::Authentication
+        if ( !$c->user ) {
             $c->res->redirect( '/login' ); # require login
             return 0; # abort request and go immediately to end()
         }
@@ -157,7 +156,7 @@ Catalyst - The Elegant MVC Web Application Framework
     # called for /foo/bar/baz
     sub baz : Local { ... }
     
-    # first Root auto is called, then Foo auto, then this
+    # first MyApp auto is called, then Foo auto, then this
     sub auto : Private { ... }
     
     # powerful regular expression paths are also possible
@@ -171,7 +170,7 @@ See L<Catalyst::Manual::Intro> for additional information.
 
 =head1 DESCRIPTION
 
-Catalyst is a modern framework for making web applications without the pain usually associated with this process. This document is a reference to the main Catalyst application. If you are a new user, we suggest you start with L<Catalyst::Manual::Tutorial> or  L<Catalyst::Manual::Intro>
+The key concept of Catalyst is DRY (Don't Repeat Yourself).
 
 See L<Catalyst::Manual> for more documentation.
 
@@ -245,16 +244,16 @@ corresponding to the controller of the current action. For example:
 Returns the current L<Catalyst::Request> object. See
 L<Catalyst::Request>.
 
-=head2 REQUEST FLOW HANDLING
+=head2 PROCESSING AND RESPONSE TO THE CURRENT REQUEST
 
 =head2 $c->forward( $action [, \@arguments ] )
 
 =head2 $c->forward( $class, $method, [, \@arguments ] )
 
-Forwards processing to another action, by it's private name. If you give a
-class name but no method, C<process()> is called. You may also optionally
-pass arguments in an arrayref. The action will receive the arguments in
-C<@_> and C<$c-E<gt>req-E<gt>args>. Upon returning from the function,
+Forwards processing to a private action. If you give a class name but no
+method, C<process()> is called. You may also optionally pass arguments
+in an arrayref. The action will receive the arguments in C<@_> and
+C<$c-E<gt>req-E<gt>args>. Upon returning from the function,
 C<$c-E<gt>req-E<gt>args> will be restored to the previous values.
 
 Any data C<return>ed from the action forwarded to, will be returned by the
@@ -285,12 +284,56 @@ sub forward { my $c = shift; $c->dispatcher->forward( $c, @_ ) }
 
 =head2 $c->detach( $class, $method, [, \@arguments ] )
 
-The same as C<forward>, but doesn't return to the previous action when 
-processing is finished. 
+The same as C<forward>, but doesn't return.
 
 =cut
 
 sub detach { my $c = shift; $c->dispatcher->detach( $c, @_ ) }
+
+=head2 $c->error
+
+=head2 $c->error($error, ...)
+
+=head2 $c->error($arrayref)
+
+Returns an arrayref containing error messages.  If Catalyst encounters an
+error while processing a request, it stores the error in $c->error.  This
+method should not be used to store non-fatal error messages.
+
+    my @error = @{ $c->error };
+
+Add a new error.
+
+    $c->error('Something bad happened');
+
+=cut
+
+sub error {
+    my $c = shift;
+    if ( $_[0] ) {
+        my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
+        croak @$error unless ref $c;
+        push @{ $c->{error} }, @$error;
+    }
+    elsif ( defined $_[0] ) { $c->{error} = undef }
+    return $c->{error} || [];
+}
+
+=head2 $c->clear_errors
+
+Clear errors.  You probably don't want to clear the errors unless you are
+implementing a custom error screen.
+
+This is equivalent to running
+
+    $c->error(0);
+
+=cut
+
+sub clear_errors {
+    my $c = shift;
+    $c->error(0);
+}
 
 =head2 $c->response
 
@@ -326,58 +369,11 @@ sub stash {
     return $c->{stash};
 }
 
-=head2 $c->error
-
-=head2 $c->error($error, ...)
-
-=head2 $c->error($arrayref)
-
-Returns an arrayref containing error messages.  If Catalyst encounters an
-error while processing a request, it stores the error in $c->error.  This
-method should not be used to store non-fatal error messages.
-
-    my @error = @{ $c->error };
-
-Add a new error.
-
-    $c->error('Something bad happened');
-
-=cut
-
-sub error {
-    my $c = shift;
-    if ( $_[0] ) {
-        my $error = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
-        croak @$error unless ref $c;
-        push @{ $c->{error} }, @$error;
-    }
-    elsif ( defined $_[0] ) { $c->{error} = undef }
-    return $c->{error} || [];
-}
-
-
 =head2 $c->state
 
 Contains the return value of the last executed action.
 
-=head2 $c->clear_errors
-
-Clear errors.  You probably don't want to clear the errors unless you are
-implementing a custom error screen.
-
-This is equivalent to running
-
-    $c->error(0);
-
 =cut
-
-sub clear_errors {
-    my $c = shift;
-    $c->error(0);
-}
-
-
-
 
 # search via regex
 sub _comp_search {
@@ -418,7 +414,7 @@ sub _comp_prefixes {
     return $comp;
 }
 
-# Find possible names for a prefix 
+# Find possible names for a prefix
 
 sub _comp_names {
     my ( $c, @prefixes ) = @_;
@@ -429,10 +425,10 @@ sub _comp_names {
 
     my @names;
 
-    COMPONENT: foreach my $comp ($c->component) {
+  COMPONENT: foreach my $comp ( $c->component ) {
         foreach my $p (@pre) {
-            if ($comp =~ s/^$p//) {
-                push(@names, $comp);
+            if ( $comp =~ s/^$p// ) {
+                push( @names, $comp );
                 next COMPONENT;
             }
         }
@@ -462,102 +458,6 @@ sub _filter_component {
 }
 
 =head2 COMPONENT ACCESSORS
-
-=head2 $c->controller($name)
-
-Gets a L<Catalyst::Controller> instance by name.
-
-    $c->controller('Foo')->do_stuff;
-
-If name is omitted, will return the controller for the dispatched action.
-
-=cut
-
-sub controller {
-    my ( $c, $name, @args ) = @_;
-    return $c->_filter_component( $c->_comp_prefixes( $name, qw/Controller C/ ),
-        @args )
-      if ($name);
-    return $c->component( $c->action->class );
-}
-
-=head2 $c->model($name)
-
-Gets a L<Catalyst::Model> instance by name.
-
-    $c->model('Foo')->do_stuff;
-
-If the name is omitted, it will look for a config setting 'default_model',
-or check if there is only one model, and forward to it if that's the case.
-
-=cut
-
-sub model {
-    my ( $c, $name, @args ) = @_;
-    return $c->_filter_component( $c->_comp_prefixes( $name, qw/Model M/ ),
-        @args )
-      if $name;
-    return $c->component( $c->config->{default_model} )
-      if $c->config->{default_model};
-    return $c->_filter_component( $c->_comp_singular(qw/Model M/), @args );
-
-}
-
-=head2 $c->controllers
-
-Returns the available names which can be passed to $c->controller
-
-=cut
-
-sub controllers {
-    my ( $c ) = @_;
-    return $c->_comp_names(qw/Controller C/);
-}
-
-
-=head2 $c->view($name)
-
-Gets a L<Catalyst::View> instance by name.
-
-    $c->view('Foo')->do_stuff;
-
-If the name is omitted, it will look for a config setting 'default_view',
-or check if there is only one view, and forward to it if that's the case.
-
-=cut
-
-sub view {
-    my ( $c, $name, @args ) = @_;
-    return $c->_filter_component( $c->_comp_prefixes( $name, qw/View V/ ),
-        @args )
-      if $name;
-    return $c->component( $c->config->{default_view} )
-      if $c->config->{default_view};
-    return $c->_filter_component( $c->_comp_singular(qw/View V/) );
-}
-
-=head2 $c->models
-
-Returns the available names which can be passed to $c->model
-
-=cut
-
-sub models {
-    my ( $c ) = @_;
-    return $c->_comp_names(qw/Model M/);
-}
-
-
-=head2 $c->views
-
-Returns the available names which can be passed to $c->view
-
-=cut
-
-sub views {
-    my ( $c ) = @_;
-    return $c->_comp_names(qw/View V/);
-}
 
 =head2 $c->comp($name)
 
@@ -595,9 +495,101 @@ sub component {
     return sort keys %{ $c->components };
 }
 
+=head2 $c->controller($name)
 
+Gets a L<Catalyst::Controller> instance by name.
 
-=head2 CLASS DATA AND HELPER CLASSES
+    $c->controller('Foo')->do_stuff;
+
+If name is omitted, will return the controller for the dispatched action.
+
+=cut
+
+sub controller {
+    my ( $c, $name, @args ) = @_;
+    return $c->_filter_component( $c->_comp_prefixes( $name, qw/Controller C/ ),
+        @args )
+      if ($name);
+    return $c->component( $c->action->class );
+}
+
+=head2 $c->controllers
+
+Returns the available names which can be passed to $c->controller
+
+=cut
+
+sub controllers {
+    my ($c) = @_;
+    return $c->_comp_names(qw/Controller C/);
+}
+
+=head2 $c->model($name)
+
+Gets a L<Catalyst::Model> instance by name.
+
+    $c->model('Foo')->do_stuff;
+
+If the name is omitted, it will look for a config setting 'default_model',
+or check if there is only one model, and forward to it if that's the case.
+
+=cut
+
+sub model {
+    my ( $c, $name, @args ) = @_;
+    return $c->_filter_component( $c->_comp_prefixes( $name, qw/Model M/ ),
+        @args )
+      if $name;
+    return $c->component( $c->config->{default_model} )
+      if $c->config->{default_model};
+    return $c->_filter_component( $c->_comp_singular(qw/Model M/), @args );
+
+}
+
+=head2 $c->models
+
+Returns the available names which can be passed to $c->model
+
+=cut
+
+sub models {
+    my ($c) = @_;
+    return $c->_comp_names(qw/Model M/);
+}
+
+=head2 $c->view($name)
+
+Gets a L<Catalyst::View> instance by name.
+
+    $c->view('Foo')->do_stuff;
+
+If the name is omitted, it will look for a config setting 'default_view',
+or check if there is only one view, and forward to it if that's the case.
+
+=cut
+
+sub view {
+    my ( $c, $name, @args ) = @_;
+    return $c->_filter_component( $c->_comp_prefixes( $name, qw/View V/ ),
+        @args )
+      if $name;
+    return $c->component( $c->config->{default_view} )
+      if $c->config->{default_view};
+    return $c->_filter_component( $c->_comp_singular(qw/View V/) );
+}
+
+=head2 $c->views
+
+Returns the available names which can be passed to $c->view
+
+=cut
+
+sub views {
+    my ($c) = @_;
+    return $c->_comp_names(qw/View V/);
+}
+
+=head2 Class data and helper classes
 
 =head2 $c->config
 
@@ -611,7 +603,6 @@ applications home directory.
     ---
     db: dsn:SQLite:foo.db
 
-
 =cut
 
 sub config {
@@ -622,24 +613,6 @@ sub config {
 
     $c->NEXT::config(@_);
 }
-
-=head2 $c->log
-
-Returns the logging object instance. Unless it is already set, Catalyst sets
-this up with a L<Catalyst::Log> object. To use your own log class, set the
-logger with the C<< __PACKAGE__->log >> method prior to calling
-C<< __PACKAGE__->setup >>.
-
- __PACKAGE__->log( MyLogger->new );
- __PACKAGE__->setup;
-
-And later:
-
-    $c->log->info( 'Now logging with my own logger!' );
-
-Your log class should implement the methods described in the
-L<Catalyst::Log> man page.
-
 
 =head2 $c->debug
 
@@ -659,6 +632,24 @@ L<Catalyst::Dispatcher>.
 Returns the engine instance. Stringifies to the class name. See
 L<Catalyst::Engine>.
 
+=head2 $c->log
+
+Returns the logging object instance. Unless it is already set, Catalyst sets
+this up with a L<Catalyst::Log> object. To use your own log class, set the
+logger with the C<< __PACKAGE__->log >> method prior to calling
+C<< __PACKAGE__->setup >>.
+
+ __PACKAGE__->log( MyLogger->new );
+ __PACKAGE__->setup;
+
+And later:
+
+    $c->log->info( 'Now logging with my own logger!' );
+
+Your log class should implement the methods described in the
+L<Catalyst::Log> man page.
+
+=cut
 
 =head2 UTILITY METHODS
 
@@ -792,7 +783,7 @@ EOF
         }
 
         if (@plugins) {
-            my $t = Text::SimpleTable->new(76);
+            my $t = Text::SimpleTable->new(74);
             $t->row($_) for @plugins;
             $class->log->debug( "Loaded plugins:\n" . $t->draw );
         }
@@ -824,7 +815,7 @@ EOF
     $class->setup_components;
 
     if ( $class->debug ) {
-        my $t = Text::SimpleTable->new( [ 65, 'Class' ], [ 8, 'Type' ] );
+        my $t = Text::SimpleTable->new( [ 63, 'Class' ], [ 8, 'Type' ] );
         for my $comp ( sort keys %{ $class->components } ) {
             my $type = ref $class->components->{$comp} ? 'instance' : 'class';
             $t->row( $comp, $type );
@@ -867,7 +858,7 @@ sub uri_for {
     my $namespace = $c->namespace;
 
     # massage namespace, empty if absolute path
-    $namespace =~ s/^\///;
+    $namespace =~ s/^\/// if $namespace;
     $namespace .= '/' if $namespace;
     $path ||= '';
     $namespace = '' if $path =~ /^\//;
@@ -928,7 +919,6 @@ sub welcome_message {
                 text-align: left;
                 background-color: #ccc;
                 border: 1px solid #aaa;
-                -moz-border-radius: 10px;
             }
             p, h1, h2 {
                 margin-left: 20px;
@@ -958,7 +948,6 @@ sub welcome_message {
                 margin: 10px;
                 background-color: #fff;
                 border: 1px solid #aaa;
-                -moz-border-radius: 10px;
             }
             h1 {
                 font-size: 0.9em;
@@ -1274,7 +1263,7 @@ sub finalize {
 
     # Allow engine to handle finalize flow (for POE)
     if ( $c->engine->can('finalize') ) {
-        $c->engine->finalize( $c );
+        $c->engine->finalize($c);
     }
     else {
 
@@ -1437,7 +1426,7 @@ sub handle_request {
             $elapsed = sprintf '%f', $elapsed;
             my $av = sprintf '%.3f',
               ( $elapsed == 0 ? '??' : ( 1 / $elapsed ) );
-            my $t = Text::SimpleTable->new( [ 64, 'Action' ], [ 9, 'Time' ] );
+            my $t = Text::SimpleTable->new( [ 62, 'Action' ], [ 9, 'Time' ] );
 
             $stats->traverse(
                 sub {
@@ -1515,9 +1504,8 @@ sub prepare {
     if ( $c->debug ) {
         my $secs = time - $START || 1;
         my $av = sprintf '%.3f', $COUNT / $secs;
-        $c->log->debug('**********************************');
-        $c->log->debug("* Request $COUNT ($av/s) [$$]");
-        $c->log->debug('**********************************');
+        my $time = localtime time;
+        $c->log->info("*** Request $COUNT ($av/s) [$$] [$time] ***");
         $c->res->headers->header( 'X-Catalyst' => $Catalyst::VERSION );
     }
 
@@ -1538,7 +1526,7 @@ sub prepare {
     }
 
     my $method  = $c->req->method  || '';
-    my $path    = $c->req->path    || '';
+    my $path    = $c->req->path    || '/';
     my $address = $c->req->address || '';
 
     $c->log->debug(qq/"$method" request for "$path" from "$address"/)
@@ -1551,7 +1539,7 @@ sub prepare {
 
 =head2 $c->prepare_action
 
-Prepares action. See L<Catalyst::Dispatcher>.
+Prepares action.
 
 =cut
 
@@ -1575,7 +1563,7 @@ sub prepare_body {
     $c->prepare_uploads;
 
     if ( $c->debug && keys %{ $c->req->body_parameters } ) {
-        my $t = Text::SimpleTable->new( [ 37, 'Key' ], [ 36, 'Value' ] );
+        my $t = Text::SimpleTable->new( [ 35, 'Key' ], [ 36, 'Value' ] );
         for my $key ( sort keys %{ $c->req->body_parameters } ) {
             my $param = $c->req->body_parameters->{$key};
             my $value = defined($param) ? $param : '';
@@ -1589,8 +1577,6 @@ sub prepare_body {
 =head2 $c->prepare_body_chunk( $chunk )
 
 Prepares a chunk of data before sending it to L<HTTP::Body>.
-
-See L<Catalyst::Engine>.
 
 =cut
 
@@ -1669,7 +1655,7 @@ sub prepare_query_parameters {
     $c->engine->prepare_query_parameters( $c, @_ );
 
     if ( $c->debug && keys %{ $c->request->query_parameters } ) {
-        my $t = Text::SimpleTable->new( [ 37, 'Key' ], [ 36, 'Value' ] );
+        my $t = Text::SimpleTable->new( [ 35, 'Key' ], [ 36, 'Value' ] );
         for my $key ( sort keys %{ $c->req->query_parameters } ) {
             my $param = $c->req->query_parameters->{$key};
             my $value = defined($param) ? $param : '';
@@ -1710,7 +1696,7 @@ sub prepare_uploads {
     if ( $c->debug && keys %{ $c->request->uploads } ) {
         my $t = Text::SimpleTable->new(
             [ 12, 'Key' ],
-            [ 28, 'Filename' ],
+            [ 26, 'Filename' ],
             [ 18, 'Type' ],
             [ 9,  'Size' ]
         );

@@ -46,14 +46,14 @@ Returns the class name of this action
 
 Returns a code reference to this action
 
-=head2 execute( $c )
+=head2 execute( $controller, $c )
 
 Execute this action against a context
 
 =cut
 
 sub execute {    # Execute ourselves against a context
-    my ( $self, $c ) = @_;
+    my ( $self, $controller, $c ) = @_;
     local $c->namespace = $self->namespace;
     return $c->execute( $self->class, $self );
 }
@@ -67,7 +67,7 @@ Check Args attribute, and makes sure number of args matches the setting.
 sub match {
     my ( $self, $c ) = @_;
     return 1 unless exists $self->attributes->{Args};
-    return scalar(@{$c->req->args}) == $self->attributes->{Args}[0];
+    return scalar( @{ $c->req->args } ) == $self->attributes->{Args}[0];
 }
 
 =head2 namespace

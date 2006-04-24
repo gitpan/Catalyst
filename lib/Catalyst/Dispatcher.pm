@@ -24,7 +24,7 @@ __PACKAGE__->mk_accessors(
 );
 
 # Preload these action types
-our @PRELOAD = qw/Index Path Regex/;
+our @PRELOAD = qw/Index Path Regex Action/;
 
 # Postload these action types
 our @POSTLOAD = qw/Default/;
@@ -159,7 +159,7 @@ sub forward {
     #push @$args, @_;
 
     local $c->request->{arguments} = $args;
-    $action->execute($c);
+    $action->execute( $c->comp( $action->class ), $c, @{ $c->req->args } );
 
     return $c->state;
 }
@@ -292,11 +292,11 @@ sub get_action {
     return $self->action_hash->{"$namespace/$name"};
 }
 
-=head2 $self->get_action_by_path( $path );
+=head2 $self->get_action_by_path( $path ); 
+   
+Returns the named action by it's full path. 
 
-returns the named action by it's full path.
-
-=cut
+=cut 
 
 sub get_action_by_path {
     my ( $self, $path ) = @_;
@@ -440,7 +440,7 @@ sub setup_actions {
 
     my $privates = Text::SimpleTable->new(
         [ 20, 'Private' ],
-        [ 38, 'Class' ],
+        [ 36, 'Class' ],
         [ 12, 'Method' ]
     );
 
