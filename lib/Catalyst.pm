@@ -61,7 +61,7 @@ __PACKAGE__->engine_class('Catalyst::Engine::CGI');
 __PACKAGE__->request_class('Catalyst::Request');
 __PACKAGE__->response_class('Catalyst::Response');
 
-our $VERSION = '5.678';
+our $VERSION = '5.68';
 
 sub import {
     my ( $class, @arguments ) = @_;
@@ -881,7 +881,7 @@ sub uri_for {
         if( $isa_ref and $isa_ref ne 'ARRAY' ) {
             croak( "Non-array reference ($isa_ref) passed to uri_for()" );
         }
-        utf8::encode( $_ ) for $isa_ref ? @$value : $value;
+        utf8::encode( $_ ) for grep { defined } $isa_ref ? @$value : $value;
     };
     
     # join args with '/', or a blank string

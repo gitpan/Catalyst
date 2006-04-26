@@ -68,7 +68,7 @@ Catalyst::Request - provides information about the current client request
     $req->user;
     $req->user_agent;
 
-See also L<Catalyst>.
+See also L<Catalyst>, L<Catalyst::Request::Upload>.
 
 =head1 DESCRIPTION
 
@@ -509,7 +509,7 @@ sub uri_with {
         if( $isa_ref and $isa_ref ne 'ARRAY' ) {
             croak( "Non-array reference ($isa_ref) passed to uri_with()" );
         }
-        utf8::encode( $_ ) for $isa_ref ? @$value : $value;
+        utf8::encode( $_ ) for grep{ defined } $isa_ref ? @$value : $value;
     };
     my $uri = $self->uri->clone;
     
