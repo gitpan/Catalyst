@@ -1,5 +1,8 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.682   2006-04-27 13:51:00
+        - Damn OSX attributes again :( 
+
 5.681   2006-04-27 08:47:00
         - Updated manifest.
         - Add basename to core . (Deprecates Catalyst::Plugin::Basename)
