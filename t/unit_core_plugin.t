@@ -16,7 +16,6 @@ use lib 't/lib';
     sub count { $count++ }
 }
 
-
 use Catalyst::Test qw/PluginTestApp/;
 
 ok( get("/compile_time_plugins"), "get ok" );

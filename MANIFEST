@@ -66,6 +66,7 @@ t/conf/extra.conf.in
 t/lib/Catalyst/Plugin/Test/Errors.pm
 t/lib/Catalyst/Plugin/Test/Headers.pm
 t/lib/Catalyst/Plugin/Test/Plugin.pm
+t/lib/PluginTestApp.pm
 t/lib/TestApp.pm
 t/lib/TestApp/Controller/Action.pm
 t/lib/TestApp/Controller/Action/Auto.pm
