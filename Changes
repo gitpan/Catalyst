@@ -1,5 +1,10 @@
 This file documents the revision history for Perl extension Catalyst.
 
+5.6900   2006-05-03 11.17:00
+        - Stupid pause indexer can't count.
+        - Better fix for Catalyst::Test
+        - more tests.
+
 5.682   2006-04-27 13:51:00
         - Damn OSX attributes again :( 
 
