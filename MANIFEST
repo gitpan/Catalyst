@@ -1,3 +1,6 @@
+Catalyst-5.6900.tar
+Catalyst-5.6900.tar.gz
+Catalyst-5.6901.tar.gz
 Changes
 inc/Module/AutoInstall.pm
 inc/Module/Install.pm
@@ -57,6 +60,7 @@ lib/Module/Install/Catalyst.pm
 Makefile.PL
 MANIFEST			This list of files
 META.yml
+README
 script/catalyst.pl
 t/01use.t
 t/02pod.t
@@ -72,6 +76,7 @@ t/lib/TestApp/Controller/Action.pm
 t/lib/TestApp/Controller/Action/Auto.pm
 t/lib/TestApp/Controller/Action/Auto/Abort.pm
 t/lib/TestApp/Controller/Action/Auto/Deep.pm
+t/lib/TestApp/Controller/Action/Auto/Default.pm
 t/lib/TestApp/Controller/Action/Begin.pm
 t/lib/TestApp/Controller/Action/Default.pm
 t/lib/TestApp/Controller/Action/Detach.pm
@@ -103,7 +108,9 @@ t/lib/TestApp/View/Dump.pm
 t/lib/TestApp/View/Dump/Parameters.pm
 t/lib/TestApp/View/Dump/Request.pm
 t/lib/TestApp/View/Dump/Response.pm
+t/lib/TestAppDoubleAutoBug.pm
 t/live_component_controller_action_auto.t
+t/live_component_controller_action_auto_doublebug.t
 t/live_component_controller_action_begin.t
 t/live_component_controller_action_default.t
 t/live_component_controller_action_detach.t

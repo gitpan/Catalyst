@@ -1,107 +1,45 @@
----
-name: Catalyst
-version: 5.56
-author:
-  - 'Sebastian Riedel, C<sri@oook.de>'
 abstract: The Elegant MVC Web Application Framework
+author: 'Sebastian Riedel, C<sri@oook.de>'
+distribution_type: module
+generated_by: Module::Install version 0.61
 license: perl
+name: Catalyst
+no_index:
+  directory:
+    - inc
+    - t
 requires:
   CGI::Cookie: 0
+  Carp: 0
   Class::Accessor::Fast: 0
   Class::Data::Inheritable: 0
   Class::Inspector: 0
+  Data::Visitor: 0.02
+  File::Copy::Recursive: 0
   File::Modified: 0
   HTML::Entities: 0
-  HTTP::Body: 0.4
-  HTTP::Headers: 1.59
+  HTTP::Body: 0.5
+  HTTP::Headers: 1.64
   HTTP::Request: 0
-  HTTP::Request::AsCGI: 0
+  HTTP::Request::AsCGI: 0.5
   HTTP::Response: 0
   LWP::UserAgent: 0
   MIME::Types: 0
+  Module::Install: 0.54
+  Module::Install::Admin: 0.54
   Module::Pluggable::Fast: 0.16
   NEXT: 0
   Path::Class: 0.09
   Scalar::Util: 0
   Template: 0
   Test::MockObject: 0
-  Text::SimpleTable: 0
+  Test::NoWarnings: 0.082
+  Text::SimpleTable: 0.03
   Time::HiRes: 0
-  Tree::Simple: 0
+  Tree::Simple: 1.15
   Tree::Simple::Visitor::FindByPath: 0
   UNIVERSAL::require: 0.10
   URI: 1.35
+  YAML: 0.55
   perl: 5.8.1
-recommends:
-  Catalyst::Engine::Apache: 1.00
-  FCGI: 0
-  FCGI::ProcManager: 0
-provides:
-  Catalyst:
-    file: lib/Catalyst.pm
-    version: 5.56
-  Catalyst::Action:
-    file: lib/Catalyst/Action.pm
-  Catalyst::ActionContainer:
-    file: lib/Catalyst/ActionContainer.pm
-  Catalyst::AttrContainer:
-    file: lib/Catalyst/AttrContainer.pm
-  Catalyst::Base:
-    file: lib/Catalyst/Base.pm
-  Catalyst::Build:
-    file: lib/Catalyst/Build.pm
-  Catalyst::Component:
-    file: lib/Catalyst/Component.pm
-  Catalyst::Controller:
-    file: lib/Catalyst/Controller.pm
-  Catalyst::DispatchType:
-    file: lib/Catalyst/DispatchType.pm
-  Catalyst::DispatchType::Default:
-    file: lib/Catalyst/DispatchType/Default.pm
-  Catalyst::DispatchType::Index:
-    file: lib/Catalyst/DispatchType/Index.pm
-  Catalyst::DispatchType::Path:
-    file: lib/Catalyst/DispatchType/Path.pm
-  Catalyst::DispatchType::Regex:
-    file: lib/Catalyst/DispatchType/Regex.pm
-  Catalyst::Dispatcher:
-    file: lib/Catalyst/Dispatcher.pm
-  Catalyst::Engine:
-    file: lib/Catalyst/Engine.pm
-  Catalyst::Engine::CGI:
-    file: lib/Catalyst/Engine/CGI.pm
-  Catalyst::Engine::FastCGI:
-    file: lib/Catalyst/Engine/FastCGI.pm
-  Catalyst::Engine::HTTP:
-    file: lib/Catalyst/Engine/HTTP.pm
-  Catalyst::Engine::HTTP::Restarter:
-    file: lib/Catalyst/Engine/HTTP/Restarter.pm
-  Catalyst::Engine::HTTP::Restarter::Watcher:
-    file: lib/Catalyst/Engine/HTTP/Restarter/Watcher.pm
-  Catalyst::Exception:
-    file: lib/Catalyst/Exception.pm
-  Catalyst::Exception::Base:
-    file: lib/Catalyst/Exception.pm
-  Catalyst::Helper:
-    file: lib/Catalyst/Helper.pm
-    version: 0.01
-  Catalyst::Log:
-    file: lib/Catalyst/Log.pm
-  Catalyst::Model:
-    file: lib/Catalyst/Model.pm
-  Catalyst::Plugin::Static::Simple:
-    file: lib/Catalyst/Plugin/Static/Simple.pm
-    version: 0.11
-  Catalyst::Request:
-    file: lib/Catalyst/Request.pm
-  Catalyst::Request::Upload:
-    file: lib/Catalyst/Request/Upload.pm
-  Catalyst::Response:
-    file: lib/Catalyst/Response.pm
-  Catalyst::Test:
-    file: lib/Catalyst/Test.pm
-  Catalyst::Utils:
-    file: lib/Catalyst/Utils.pm
-  Catalyst::View:
-    file: lib/Catalyst/View.pm
-generated_by: Module::Build version 0.2611
+version: 5.6901
