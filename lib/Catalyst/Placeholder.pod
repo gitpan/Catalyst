@@ -1,3 +1,5 @@
+package Catalyst::Placeholder;
+
 =head1 NAME
 
 Catalyst Distribution

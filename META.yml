@@ -9,4 +9,4 @@ no_index:
 requires: 
   Catalyst::Runtime: 5.7
   perl: 5.6.1
-version: 5.7000
+version: 5.7001
