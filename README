@@ -1,0 +1,4 @@
+This distribution is a convenience for search.cpan.org.
+
+Please see Catalyst::Runtime (or install this distribution and it will be
+installed automatically)

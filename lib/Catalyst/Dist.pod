@@ -1,0 +1,51 @@
+=head1 NAME
+
+Catalyst Distribution
+
+=head1 DESCRIPTION 
+
+Catalyst is a modern framework for making web applications. This dist was 
+created as a convenience after version 5.7, where Catalyst was split into two 
+separate distributions: L<Catalyst::Runtime> and L<Catalyst::Devel>.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item *
+
+L<Catalyst>
+
+=item *
+
+L<Catalyst::Devel>
+
+=item *
+
+L<Catalyst::Manual>
+
+=back
+
+If you are using search.cpan.org to browse this documentation, the above links
+might not work, so please use the following instead
+
+=over 4
+
+=item *
+
+L<Catalyst::Runtime|http://search.cpan.org/dist/Catalyst-Runtime/>
+
+=item *
+
+L<Catalyst::Devel|http://search.cpan.org/dist/Catalyst-Devel/>
+
+=item *
+
+L<Catalyst::Manual|http://search.cpan.org/dist/Catalyst-Manual/>
+
+=back
+
+=head1 AUTHOR
+
+The Catalyst Core Team
+
